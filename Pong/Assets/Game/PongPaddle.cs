@@ -1,7 +1,7 @@
 // Copyright CodeGamified 2025-2026
 // MIT License — Pong: Hello World
 using UnityEngine;
-using Pong.Core;
+using CodeGamified.Time;
 
 namespace Pong.Game
 {
@@ -23,6 +23,7 @@ namespace Pong.Game
     {
         public PaddleSide Side { get; private set; }
         public float PaddleHeight { get; private set; }
+        public float Thickness { get; private set; }
         public float CourtHeight { get; private set; }
         public float HalfPaddleH => PaddleHeight / 2f;
         public float HalfCourtH => CourtHeight / 2f;
@@ -35,9 +36,9 @@ namespace Pong.Game
         public void Initialize(float height, float thickness, float courtH, PaddleSide side)
         {
             PaddleHeight = height;
+            Thickness = thickness;
             CourtHeight = courtH;
             Side = side;
-            transform.localScale = new Vector3(thickness, height, 1f);
         }
 
         private void Update()

@@ -1,7 +1,17 @@
 // Copyright CodeGamified 2025-2026
 // MIT License — Pong: Hello World
+using System.Collections.Generic;
 using UnityEngine;
+using CodeGamified.Audio;
+using CodeGamified.Camera;
+using CodeGamified.Editor;
+using CodeGamified.Persistence;
+using CodeGamified.Persistence.Providers;
+using CodeGamified.Procedural;
+using CodeGamified.Time;
+using Pong.Audio;
 using Pong.Game;
+using Pong.Persistence;
 using Pong.Scripting;
 using Pong.AI;
 using Pong.UI;
@@ -81,6 +91,16 @@ namespace Pong.Core
         [Tooltip("Enable leaderboard tracking")]
         public bool enableLeaderboard = true;
 
+        [Header("Persistence")]
+        [Tooltip("Enable script persistence (saves to .data/)")]
+        public bool enablePersistence = true;
+
+        [Tooltip("Use local git repo instead of in-memory (survives restarts)")]
+        public bool useLocalGitProvider = false;
+
+        [Tooltip("Path to .data/ directory (relative to project root)")]
+        public string dataPath = "Assets/.data";
+
         [Header("Camera")]
         public bool configureCamera = true;
 
@@ -103,6 +123,36 @@ namespace Pong.Core
         // TUI (from .engine)
         private PongTUIManager _tuiManager;
 
+        // Procedural (from .engine)
+        private ColorPalette _palette;
+        private AssemblyResult _leftPaddleVisual;
+        private AssemblyResult _rightPaddleVisual;
+        private AssemblyResult _ballVisual;
+
+        // Audio + Haptic (from .engine)
+        private PongAudioProvider _audioProvider;
+        private AudioBridge.EngineHandlers _engineAudio;
+        private PongHapticProvider _hapticProvider;
+        private HapticBridge.EngineHandlers _engineHaptic;
+
+        // Persistence (from .engine)
+        private PongPersistenceManager _persistence;
+
+        // Goal zones (from Procedural)
+        private AssemblyResult _leftGoalVisual;
+        private AssemblyResult _rightGoalVisual;
+
+        // Warp (from .engine Time)
+        private PongWarpController _warpController;
+
+        // Ball trail
+        private PongBallTrail _ballTrail;
+
+        // Code editor (from .engine Editor)
+        private CodeEditorWindow _codeEditor;
+        private PongEditorExtension _editorExt;
+        private PongCompilerExtension _compilerExt;
+
         // =================================================================
         // BOOTSTRAP
         // =================================================================
@@ -113,14 +163,21 @@ namespace Pong.Core
 
             SetupSimulationTime();
             SetupCamera();
+            CreatePalette();
             CreateCourt();
+            CreateGoalZones();
             CreatePaddles();
             CreateBall();
+            CreateBallTrail();
             CreateMatchManager();
+            CreateWarpController();
             CreateAI();
 
             if (enableScripting) CreatePlayerProgram();
             if (enableLeaderboard) CreateLeaderboard();
+            CreateAudio();
+            if (enableScripting && enablePersistence) CreatePersistence();
+            if (enableScripting) CreateCodeEditor();
             if (enableTUI) CreateTUI();
 
             WireEvents();
@@ -135,28 +192,17 @@ namespace Pong.Core
         {
             if (SimulationTime.Instance != null)
             {
-                Log("SimulationTime already exists, configuring for Pong.");
-                ConfigureSimulationTime(SimulationTime.Instance);
+                Log("SimulationTime already exists.");
                 return;
             }
 
             var go = new GameObject("SimulationTime");
-            var sim = go.AddComponent<SimulationTime>();
-            ConfigureSimulationTime(sim);
-            Log("Created SimulationTime");
-        }
-
-        private void ConfigureSimulationTime(SimulationTime sim)
-        {
-            // Pong doesn't need day/night — just time scale control
-            sim.dayLengthSeconds = 99999f;
-            sim.startingHour = 12f;
-            // Pong time scale presets: 1x real-time → 1000x warp speed
-            sim.timeScalePresets = new float[] { 0f, 0.25f, 0.5f, 1f, 2f, 5f, 10f, 50f, 100f, 500f, 1000f };
+            go.AddComponent<PongSimulationTime>();
+            Log("Created PongSimulationTime (engine subclass)");
         }
 
         // =================================================================
-        // CAMERA
+        // CAMERA — perspective 3D view of the court
         // =================================================================
 
         private void SetupCamera()
@@ -172,19 +218,21 @@ namespace Pong.Core
                 go.AddComponent<AudioListener>();
             }
 
-            // Orthographic top-down view centered on court
-            cam.orthographic = true;
-            cam.orthographicSize = courtHeight / 2f + 1f;
-            cam.transform.position = new Vector3(0f, 0f, -10f);
+            // Perspective 3D view — looking down at the court
+            cam.orthographic = false;
+            cam.fieldOfView = 60f;
+            cam.transform.position = new Vector3(0f, 8f, -12f);
             cam.transform.LookAt(Vector3.zero, Vector3.up);
-            cam.transform.rotation = Quaternion.identity;
-            cam.transform.position = new Vector3(0f, 0f, -10f);
             cam.clearFlags = CameraClearFlags.SolidColor;
-            cam.backgroundColor = Color.black;
+            cam.backgroundColor = new Color(0.01f, 0.01f, 0.02f);
             cam.nearClipPlane = 0.1f;
             cam.farClipPlane = 100f;
 
-            Log($"Camera: ortho, size={cam.orthographicSize}");
+            // Add subtle sway (engine CameraAmbientMotion)
+            var sway = cam.gameObject.AddComponent<CameraAmbientMotion>();
+            sway.lookAtTarget = Vector3.zero;
+
+            Log($"Camera: perspective, FOV=60, 3D view + ambient sway");
         }
 
         // =================================================================
@@ -197,8 +245,8 @@ namespace Pong.Core
             _court = go.AddComponent<PongCourt>();
             _court.Width = courtWidth;
             _court.Height = courtHeight;
-            _court.Initialize();
-            Log($"Created Court ({courtWidth}x{courtHeight})");
+            _court.Initialize(_palette);
+            Log($"Created Court ({courtWidth}×{courtHeight}) via ProceduralAssembler");
         }
 
         // =================================================================
@@ -210,39 +258,28 @@ namespace Pong.Core
             float halfW = courtWidth / 2f;
 
             // Left paddle — player's CODE controls this
-            var leftGo = CreatePaddleObject("LeftPaddle (CODE)", 
-                new Vector3(-halfW + paddleOffset, 0f, 0f));
+            var leftGo = new GameObject("LeftPaddle (CODE)");
+            leftGo.transform.position = new Vector3(-halfW + paddleOffset, 0f, 0f);
             _leftPaddle = leftGo.AddComponent<PongPaddle>();
             _leftPaddle.Initialize(paddleHeight, paddleThickness, courtHeight, PaddleSide.Left);
 
+            var leftBlueprint = new PongPaddleBlueprint(paddleHeight, paddleThickness, PaddleSide.Left);
+            _leftPaddleVisual = ProceduralAssembler.BuildWithVisualState(leftBlueprint, _palette);
+            if (_leftPaddleVisual.Root != null)
+                _leftPaddleVisual.Root.transform.SetParent(leftGo.transform, false);
+
             // Right paddle — AI opponent
-            var rightGo = CreatePaddleObject("RightPaddle (AI)", 
-                new Vector3(halfW - paddleOffset, 0f, 0f));
+            var rightGo = new GameObject("RightPaddle (AI)");
+            rightGo.transform.position = new Vector3(halfW - paddleOffset, 0f, 0f);
             _rightPaddle = rightGo.AddComponent<PongPaddle>();
             _rightPaddle.Initialize(paddleHeight, paddleThickness, courtHeight, PaddleSide.Right);
 
-            Log("Created Paddles (Left=CODE, Right=AI)");
-        }
+            var rightBlueprint = new PongPaddleBlueprint(paddleHeight, paddleThickness, PaddleSide.Right);
+            _rightPaddleVisual = ProceduralAssembler.BuildWithVisualState(rightBlueprint, _palette);
+            if (_rightPaddleVisual.Root != null)
+                _rightPaddleVisual.Root.transform.SetParent(rightGo.transform, false);
 
-        private GameObject CreatePaddleObject(string name, Vector3 position)
-        {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            go.name = name;
-            go.transform.position = position;
-            go.transform.localScale = new Vector3(paddleThickness, paddleHeight, 1f);
-
-            var renderer = go.GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                renderer.material = new Material(Shader.Find("Sprites/Default"));
-                renderer.material.color = Color.white;
-            }
-
-            // Remove 3D collider, we do our own collision
-            var collider = go.GetComponent<Collider>();
-            if (collider != null) Destroy(collider);
-
-            return go;
+            Log("Created 3D Paddles (Left=CODE, Right=AI) via ProceduralAssembler");
         }
 
         // =================================================================
@@ -251,25 +288,17 @@ namespace Pong.Core
 
         private void CreateBall()
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            go.name = "Ball";
-            go.transform.localScale = new Vector3(ballRadius * 2f, ballRadius * 2f, 1f);
-
-            var renderer = go.GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                renderer.material = new Material(Shader.Find("Sprites/Default"));
-                renderer.material.color = Color.white;
-            }
-
-            var collider = go.GetComponent<Collider>();
-            if (collider != null) Destroy(collider);
-
+            var go = new GameObject("Ball");
             _ball = go.AddComponent<PongBall>();
-            _ball.Initialize(ballStartSpeed, ballMaxSpeed, ballSpeedIncrease, 
+            _ball.Initialize(ballStartSpeed, ballMaxSpeed, ballSpeedIncrease,
                              ballRadius, maxBounceAngle, courtWidth, courtHeight);
 
-            Log("Created Ball");
+            var ballBlueprint = new PongBallBlueprint(ballRadius);
+            _ballVisual = ProceduralAssembler.BuildWithVisualState(ballBlueprint, _palette);
+            if (_ballVisual.Root != null)
+                _ballVisual.Root.transform.SetParent(go.transform, false);
+
+            Log("Created 3D Ball (Sphere) via ProceduralAssembler");
         }
 
         // =================================================================
@@ -333,6 +362,141 @@ namespace Pong.Core
         }
 
         // =================================================================
+        // COLOR PALETTE (Procedural — .engine)
+        // =================================================================
+
+        private void CreatePalette()
+        {
+            var colors = new Dictionary<string, Color>
+            {
+                { "wall",           Color.white },
+                { "paddle_player",  new Color(0f, 1f, 1f) },         // cyan
+                { "paddle_ai",     new Color(1f, 0.2f, 0.8f) },     // magenta
+                { "ball",          new Color(1f, 1f, 0.3f) },        // bright yellow
+                { "court_line",    new Color(0.3f, 0.3f, 0.4f) },    // dim blue-gray
+                { "court_floor",   new Color(0.02f, 0.02f, 0.05f) }, // near-black
+                { "goal_player",   new Color(0f, 1f, 1f, 0.15f) },    // translucent cyan
+                { "goal_ai",       new Color(1f, 0.2f, 0.8f, 0.15f) }, // translucent magenta
+                { "ball_trail",    new Color(1f, 1f, 0.3f, 0.5f) }     // fading yellow
+            };
+            _palette = ColorPalette.CreateRuntime(colors);
+            Log("Created neon arcade ColorPalette");
+        }
+
+        // =================================================================
+        // AUDIO (.engine powered)
+        // =================================================================
+
+        private void CreateAudio()
+        {
+            _audioProvider = new PongAudioProvider();
+            System.Func<float> getTimeScale = () => SimulationTime.Instance?.timeScale ?? 1f;
+
+            _engineAudio = AudioBridge.ForEngine(_audioProvider, getTimeScale);
+
+            // Haptic bridge
+            _hapticProvider = new PongHapticProvider();
+            _engineHaptic = HapticBridge.ForEngine(_hapticProvider, getTimeScale);
+
+            Log("Created AudioBridge + HapticBridge (synth tones + haptic)");
+        }
+
+        // =================================================================
+        // PERSISTENCE (.engine powered)
+        // =================================================================
+
+        private void CreatePersistence()
+        {
+            var go = new GameObject("Persistence");
+            _persistence = go.AddComponent<PongPersistenceManager>();
+
+            IGitRepository repo;
+            string providerName;
+            if (useLocalGitProvider)
+            {
+                string fullPath = System.IO.Path.GetFullPath(dataPath);
+                var localRepo = new LocalGitProvider(fullPath);
+                localRepo.EnsureInitialized();
+                repo = localRepo;
+                providerName = "LocalGitProvider";
+            }
+            else
+            {
+                repo = new MemoryGitProvider();
+                providerName = "MemoryGitProvider";
+            }
+
+            _persistence.Initialize(repo, _playerProgram);
+            _persistence.autosaveInterval = 30f;
+            _persistence.syncInterval = useLocalGitProvider ? 300f : 0f;
+
+            // Wire direct code-change callback
+            if (_playerProgram != null)
+                _playerProgram.OnCodeChanged += () => _persistence?.OnCodeUploaded();
+
+            Log($"Created PongPersistenceManager ({providerName})");
+        }
+
+        // =================================================================
+        // GOAL ZONES (Procedural — .engine)
+        // =================================================================
+
+        private void CreateGoalZones()
+        {
+            float halfW = courtWidth / 2f;
+            float depth = 0.5f;
+
+            // Left goal zone — behind player's paddle
+            var leftBlueprint = new PongGoalZoneBlueprint(courtHeight, depth, PaddleSide.Left);
+            _leftGoalVisual = ProceduralAssembler.BuildWithVisualState(leftBlueprint, _palette);
+            if (_leftGoalVisual.Root != null)
+                _leftGoalVisual.Root.transform.position = new Vector3(-halfW - 0.5f, 0f, 0f);
+
+            // Right goal zone — behind AI's paddle
+            var rightBlueprint = new PongGoalZoneBlueprint(courtHeight, depth, PaddleSide.Right);
+            _rightGoalVisual = ProceduralAssembler.BuildWithVisualState(rightBlueprint, _palette);
+            if (_rightGoalVisual.Root != null)
+                _rightGoalVisual.Root.transform.position = new Vector3(halfW + 0.5f, 0f, 0f);
+
+            Log("Created 3D Goal Zones (translucent glow planes)");
+        }
+
+        // =================================================================
+        // WARP CONTROLLER (.engine Time)
+        // =================================================================
+
+        private void CreateWarpController()
+        {
+            var go = new GameObject("WarpController");
+            _warpController = go.AddComponent<PongWarpController>();
+            _warpController.Initialize(_match);
+            Log("Created PongWarpController ([W] to warp 10 matches)");
+        }
+
+        // =================================================================
+        // BALL TRAIL
+        // =================================================================
+
+        private void CreateBallTrail()
+        {
+            var go = new GameObject("BallTrail");
+            _ballTrail = go.AddComponent<PongBallTrail>();
+            _ballTrail.Initialize(_ball, _palette);
+            Log("Created BallTrail (fading spheres)");
+        }
+
+        // =================================================================
+        // CODE EDITOR (.engine Editor)
+        // =================================================================
+
+        private void CreateCodeEditor()
+        {
+            _compilerExt = new PongCompilerExtension();
+            _editorExt = new PongEditorExtension();
+            Log("Created PongEditorExtension (ready for CodeEditorWindow)");
+        }
+
+        // =================================================================
         // EVENT WIRING
         // =================================================================
 
@@ -352,6 +516,9 @@ namespace Pong.Core
                 _match.OnMatchEnded += (winner) =>
                 {
                     Log($"MATCH OVER — {winner} WINS!");
+                    _audioProvider?.PlayMatchWon();
+                    _hapticProvider?.TapHeavy();
+
                     if (_leaderboard != null)
                     {
                         bool playerWon = (winner == PaddleSide.Left);
@@ -359,6 +526,85 @@ namespace Pong.Core
                             _match.LeftScore, _match.RightScore);
                     }
                 };
+
+                _match.OnServe += () => _audioProvider?.PlayServe();
+            }
+
+            // ── Procedural visual effects + audio + haptic ──
+            if (_ball != null)
+            {
+                _ball.OnPaddleHit += (side) =>
+                {
+                    if (side == PaddleSide.Left && _leftPaddleVisual.VisualState != null)
+                        _leftPaddleVisual.VisualState.Pulse("body", Color.cyan, 0.15f);
+                    else if (side == PaddleSide.Right && _rightPaddleVisual.VisualState != null)
+                        _rightPaddleVisual.VisualState.Pulse("body", new Color(1f, 0.2f, 0.8f), 0.15f);
+
+                    _audioProvider?.PlayPaddleHit();
+                    _hapticProvider?.TapMedium();
+                };
+
+                _ball.OnWallHit += () =>
+                {
+                    var courtVS = _court?.Visual.VisualState;
+                    if (courtVS != null)
+                    {
+                        courtVS.Pulse("wall_top", Color.white, 0.1f);
+                        courtVS.Pulse("wall_bottom", Color.white, 0.1f);
+                    }
+
+                    _audioProvider?.PlayWallBounce();
+                    _hapticProvider?.TapLight();
+                };
+
+                _ball.OnGoalScored += (scorer) =>
+                {
+                    _audioProvider?.PlayGoalScored();
+                    _hapticProvider?.TapHeavy();
+
+                    // Flash the scoring paddle + goal zone
+                    if (scorer == PaddleSide.Left)
+                    {
+                        _leftPaddleVisual.VisualState?.Pulse("body", Color.white, 0.3f);
+                        _leftGoalVisual.VisualState?.Pulse("zone", Color.cyan, 0.5f);
+                    }
+                    else
+                    {
+                        _rightPaddleVisual.VisualState?.Pulse("body", Color.white, 0.3f);
+                        _rightGoalVisual.VisualState?.Pulse("zone", new Color(1f, 0.2f, 0.8f), 0.5f);
+                    }
+                };
+            }
+
+            // ── Ball speed → emission glow binding ──
+            if (_ballVisual.VisualState != null && _ball != null)
+            {
+                _ballVisual.VisualState.Bind("body",
+                    () => _ball.CurrentSpeed / ballMaxSpeed,
+                    VisualChannel.Emission, 0f, 2f);
+            }
+
+            // ── Audio: engine instruction step sounds ──
+            if (_playerProgram?.Executor != null)
+            {
+                _playerProgram.Executor.OnHalted += _engineAudio.Halted;
+                _playerProgram.Executor.OnHalted += _engineHaptic.Halted;
+            }
+
+            // ── Warp audio hooks ──
+            if (_warpController != null)
+            {
+                var timeAudio = AudioBridge.ForTime(
+                    _audioProvider, () => SimulationTime.Instance?.timeScale ?? 1f);
+                _warpController.OnWarpArrived += timeAudio.WarpArrived;
+                _warpController.OnWarpCancelled += timeAudio.WarpCancelled;
+                _warpController.OnWarpComplete += timeAudio.WarpComplete;
+            }
+
+            // ── Persistence: mark dirty on every code upload ──
+            if (_persistence != null && _match != null)
+            {
+                _match.OnMatchEnded += (_) => _persistence?.OnCodeUploaded();
             }
         }
 
@@ -372,17 +618,23 @@ namespace Pong.Core
             yield return null;
 
             Log("────────────────────────────────────────");
-            Log("🏓 PONG — Write Code. Beat AI. Level Up.");
+            Log("🏓 PONG 3D — Write Code. Beat AI. Level Up.");
             Log("────────────────────────────────────────");
-            Log($"  COURT │ {courtWidth}×{courtHeight}");
-            Log($"  BALL  │ speed={ballStartSpeed}, max={ballMaxSpeed}");
+            Log($"  COURT │ {courtWidth}×{courtHeight} (3D ProceduralAssembler)");
+            Log($"  BALL  │ speed={ballStartSpeed}, max={ballMaxSpeed} (3D Sphere + trail)");
             Log($"  MATCH │ first to {pointsToWin}");
             Log($"  AI    │ {aiDifficulty}");
-            Log($"  TIME  │ {SimulationTime.Instance?.GetFormattedTimeScale() ?? "1x"}");
+            Log($"  TIME  │ {SimulationTime.Instance?.GetFormattedTimeScale() ?? "1x"} (engine SimulationTime)");
             Log("────────────────────────────────────────");
-            Log($"  Scripting │ {(enableScripting ? "✅ ACTIVE" : "── disabled")}");
-            Log($"  TUI       │ {(enableTUI ? "✅ ACTIVE" : "── disabled")}");
-            Log($"  Leaderboard│ {(enableLeaderboard ? "✅ ACTIVE" : "── disabled")}");
+            Log($"  Scripting    │ {(enableScripting ? "✅ ACTIVE" : "── disabled")}");
+            Log($"  TUI          │ {(enableTUI ? "✅ ACTIVE" : "── disabled")}");
+            Log($"  Leaderboard  │ {(enableLeaderboard ? "✅ ACTIVE" : "── disabled")}");
+            Log($"  Audio        │ ✅ Synth tones + HapticBridge");
+            Log($"  Persistence  │ {(enablePersistence ? (useLocalGitProvider ? "✅ LocalGitProvider" : "✅ MemoryGitProvider") : "── disabled")}");
+            Log($"  Procedural   │ ✅ 3D court/paddles/ball/goals/trail");
+            Log($"  Warp         │ ✅ [W] warp 10 matches");
+            Log($"  Editor       │ ✅ PongEditorExtension ready");
+            Log($"  Camera       │ ✅ Perspective + sway");
             Log("────────────────────────────────────────");
             Log("🏓 Bootstrap complete. Write your paddle code!");
 

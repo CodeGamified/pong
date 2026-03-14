@@ -1,7 +1,7 @@
 // Copyright CodeGamified 2025-2026
 // MIT License — Pong: Hello World
 using UnityEngine;
-using Pong.Core;
+using CodeGamified.Time;
 
 namespace Pong.Game
 {
@@ -117,7 +117,7 @@ namespace Pong.Game
                 float px = LeftPaddle.transform.position.x;
                 float py = LeftPaddle.currentY;
                 float halfH = LeftPaddle.HalfPaddleH;
-                float halfT = LeftPaddle.transform.localScale.x / 2f;
+                float halfT = LeftPaddle.Thickness / 2f;
 
                 if (Position.x - _radius <= px + halfT &&
                     Position.x + _radius >= px - halfT &&
@@ -135,7 +135,7 @@ namespace Pong.Game
                 float px = RightPaddle.transform.position.x;
                 float py = RightPaddle.currentY;
                 float halfH = RightPaddle.HalfPaddleH;
-                float halfT = RightPaddle.transform.localScale.x / 2f;
+                float halfT = RightPaddle.Thickness / 2f;
 
                 if (Position.x + _radius >= px - halfT &&
                     Position.x - _radius <= px + halfT &&

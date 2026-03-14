@@ -1,7 +1,7 @@
 // Copyright CodeGamified 2025-2026
 // MIT License — Pong: Hello World
 using CodeGamified.Engine;
-using Pong.Core;
+using CodeGamified.Time;
 using Pong.Game;
 using UnityEngine;
 

@@ -4,7 +4,7 @@ using UnityEngine;
 using CodeGamified.Engine;
 using CodeGamified.Engine.Compiler;
 using CodeGamified.Engine.Runtime;
-using Pong.Core;
+using CodeGamified.Time;
 using Pong.Game;
 
 namespace Pong.Scripting
@@ -61,6 +61,9 @@ set_target_y(ball_y)
 ";
 
         public string CurrentSourceCode => _sourceCode;
+
+        // Persistence callback — set by bootstrap to trigger autosave on code change
+        public System.Action OnCodeChanged;
 
         public void Initialize(PongPaddle paddle, PongBall ball, PongCourt court,
                                string initialCode = null, string programName = "PaddleAI")
@@ -152,6 +155,7 @@ set_target_y(ball_y)
             _sourceCode = newSource ?? DEFAULT_CODE;
             LoadAndRun(_sourceCode);
             Debug.Log($"[PaddleAI] Uploaded new code ({_program?.Instructions?.Length ?? 0} instructions)");
+            OnCodeChanged?.Invoke();
         }
     }
 }

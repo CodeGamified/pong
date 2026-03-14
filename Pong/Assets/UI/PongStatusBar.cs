@@ -2,7 +2,7 @@
 // MIT License — Pong: Hello World
 using UnityEngine;
 using CodeGamified.TUI;
-using Pong.Core;
+using CodeGamified.Time;
 using Pong.Game;
 using Pong.AI;
 using Pong.Scripting;
@@ -285,6 +285,8 @@ namespace Pong.UI
                 $"   {TUIColors.Fg(TUIColors.BrightCyan, "[R]")}         Reset your code",
                 $"   {TUIColors.Fg(TUIColors.BrightCyan, "[+/-]")}       Time scale",
                 $"   {TUIColors.Fg(TUIColors.BrightCyan, "[SPACE]")}     Pause / Resume",
+                $"   {TUIColors.Fg(TUIColors.BrightCyan, "[W]")}         Warp forward 10 matches",
+                $"   {TUIColors.Fg(TUIColors.BrightCyan, "[ESC]")}       Cancel warp",
                 $"   {TUIColors.Fg(TUIColors.BrightCyan, $"[{TUIGlyphs.ArrowU}/{TUIGlyphs.ArrowD}]")}       Scroll code windows",
             };
 
