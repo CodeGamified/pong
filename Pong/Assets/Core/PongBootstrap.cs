@@ -148,10 +148,188 @@ namespace Pong.Core
         // Ball trail
         private PongBallTrail _ballTrail;
 
+        // Camera (from .engine Camera)
+        private CameraAmbientMotion _cameraSway;
+        private Transform _cameraFollowTarget;
+        private bool _cameraFollowIsBall;
+        private static readonly Vector3 DefaultCameraPos = new Vector3(0f, 8f, -12f);
+        private float _followDistance = 10f;
+        private float _followElevation = 5f;
+        private const float FollowSideOffset = 3f;
+        private const float FollowLerpSpeed = 6f;
+        private const float ZoomSpeed = 8f;
+        private const float MinZoom = 4f;
+        private const float MaxZoom = 30f;
+
         // Code editor (from .engine Editor)
         private CodeEditorWindow _codeEditor;
         private PongEditorExtension _editorExt;
         private PongCompilerExtension _compilerExt;
+
+        // =================================================================
+        // UPDATE — camera click-to-follow
+        // =================================================================
+
+        private void Update()
+        {
+            HandleScrollZoom();
+            UpdateCameraFollow();
+            HandleCameraClick();
+            HandleCameraEscape();
+        }
+
+        private void HandleScrollZoom()
+        {
+            float scroll = Input.GetAxis("Mouse ScrollWheel");
+            if (Mathf.Abs(scroll) < 0.001f) return;
+
+            if (_cameraFollowTarget != null)
+            {
+                // Follow mode — zoom adjusts distance and elevation proportionally
+                _followDistance -= scroll * ZoomSpeed;
+                _followDistance = Mathf.Clamp(_followDistance, MinZoom, MaxZoom);
+                _followElevation = _followDistance * 0.5f;
+            }
+            else if (_cameraSway != null && _cameraSway.enabled)
+            {
+                // Sway mode — zoom adjusts the base position Z
+                Vector3 basePos = _cameraSway.lookAtTarget - Vector3.forward;
+                float currentZ = _cameraSway.lookAtTarget.z - _cameraSway.transform.position.z;
+                if (currentZ < 0.1f) currentZ = Mathf.Abs(DefaultCameraPos.z);
+
+                float newZ = currentZ - scroll * ZoomSpeed;
+                newZ = Mathf.Clamp(newZ, MinZoom, MaxZoom);
+
+                float ratio = newZ / Mathf.Max(Mathf.Abs(DefaultCameraPos.z), 0.01f);
+                Vector3 newBase = new Vector3(
+                    DefaultCameraPos.x,
+                    DefaultCameraPos.y * ratio,
+                    -newZ);
+                _cameraSway.SetBasePosition(newBase);
+            }
+        }
+
+        private void UpdateCameraFollow()
+        {
+            if (_cameraFollowTarget == null) return;
+
+            var cam = UnityEngine.Camera.main;
+            if (cam == null) return;
+
+            Vector3 targetPos = _cameraFollowTarget.position;
+
+            // Camera sits behind the target in -Z, elevated, with side offset
+            float sideOffset = 0f;
+            if (!_cameraFollowIsBall)
+            {
+                // Offset toward the paddle's side so view isn't blocked
+                sideOffset = targetPos.x < 0f ? -FollowSideOffset : FollowSideOffset;
+            }
+
+            Vector3 desiredCamPos = new Vector3(
+                targetPos.x + sideOffset,
+                targetPos.y + _followElevation,
+                targetPos.z - _followDistance);
+
+            // Look at the ball (or court center if ball is inactive)
+            Vector3 lookPoint = (_ball != null && _ball.IsActive)
+                ? new Vector3(_ball.Position.x, _ball.Position.y, 0f)
+                : Vector3.zero;
+
+            // Smooth lerp — never snap
+            cam.transform.position = Vector3.Lerp(
+                cam.transform.position, desiredCamPos,
+                Time.unscaledDeltaTime * FollowLerpSpeed);
+
+            Quaternion desiredRot = Quaternion.LookRotation(
+                lookPoint - cam.transform.position, Vector3.up);
+            cam.transform.rotation = Quaternion.Slerp(
+                cam.transform.rotation, desiredRot,
+                Time.unscaledDeltaTime * FollowLerpSpeed);
+        }
+
+        private void HandleCameraClick()
+        {
+            if (!Input.GetMouseButtonDown(0)) return;
+
+            var cam = UnityEngine.Camera.main;
+            if (cam == null) return;
+
+            Ray ray = cam.ScreenPointToRay(Input.mousePosition);
+            if (!Physics.Raycast(ray, out RaycastHit hit, 100f)) return;
+
+            // Check paddles
+            var paddle = hit.transform.GetComponentInParent<PongPaddle>();
+            if (paddle != null)
+            {
+                StopAllCoroutines();
+                _cameraSway.enabled = false;
+                _cameraFollowTarget = paddle.transform;
+                _cameraFollowIsBall = false;
+                _followDistance = 10f;
+                _followElevation = 5f;
+                Log($"Camera → following {paddle.name}");
+                return;
+            }
+
+            // Check ball
+            var ball = hit.transform.GetComponentInParent<PongBall>();
+            if (ball != null)
+            {
+                StopAllCoroutines();
+                _cameraSway.enabled = false;
+                _cameraFollowTarget = ball.transform;
+                _cameraFollowIsBall = true;
+                _followDistance = 10f;
+                _followElevation = 5f;
+                Log("Camera → following Ball");
+                return;
+            }
+        }
+
+        private void HandleCameraEscape()
+        {
+            if (_cameraFollowTarget == null) return;
+            if (!Input.GetKeyDown(KeyCode.Escape)) return;
+
+            _cameraFollowTarget = null;
+            StartCoroutine(LerpToDefaultView());
+        }
+
+        private System.Collections.IEnumerator LerpToDefaultView()
+        {
+            var cam = UnityEngine.Camera.main;
+            if (cam == null) yield break;
+
+            // Disable sway until lerp completes
+            _cameraSway.enabled = false;
+
+            Vector3 startPos = cam.transform.position;
+            Quaternion startRot = cam.transform.rotation;
+            Quaternion targetRot = Quaternion.LookRotation(Vector3.zero - DefaultCameraPos, Vector3.up);
+
+            float duration = 0.6f;
+            float elapsed = 0f;
+
+            while (elapsed < duration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float t = elapsed / duration;
+                // Cubic ease-out
+                t = 1f - Mathf.Pow(1f - t, 3f);
+
+                cam.transform.position = Vector3.Lerp(startPos, DefaultCameraPos, t);
+                cam.transform.rotation = Quaternion.Slerp(startRot, targetRot, t);
+                yield return null;
+            }
+
+            cam.transform.position = DefaultCameraPos;
+            cam.transform.LookAt(Vector3.zero, Vector3.up);
+
+            _cameraSway.SetBasePosition(DefaultCameraPos);
+            _cameraSway.enabled = true;
+            Log("Camera → default sway");
+        }
 
         // =================================================================
         // BOOTSTRAP
@@ -221,18 +399,18 @@ namespace Pong.Core
             // Perspective 3D view — looking down at the court
             cam.orthographic = false;
             cam.fieldOfView = 60f;
-            cam.transform.position = new Vector3(0f, 8f, -12f);
+            cam.transform.position = DefaultCameraPos;
             cam.transform.LookAt(Vector3.zero, Vector3.up);
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0.01f, 0.01f, 0.02f);
             cam.nearClipPlane = 0.1f;
             cam.farClipPlane = 100f;
 
-            // Add subtle sway (engine CameraAmbientMotion)
-            var sway = cam.gameObject.AddComponent<CameraAmbientMotion>();
-            sway.lookAtTarget = Vector3.zero;
+            // CameraAmbientMotion — default gentle sway
+            _cameraSway = cam.gameObject.AddComponent<CameraAmbientMotion>();
+            _cameraSway.lookAtTarget = Vector3.zero;
 
-            Log($"Camera: perspective, FOV=60, 3D view + ambient sway");
+            Log($"Camera: perspective, FOV=60, 3D view + click-to-follow + sway");
         }
 
         // =================================================================
@@ -634,7 +812,7 @@ namespace Pong.Core
             Log($"  Procedural   │ ✅ 3D court/paddles/ball/goals/trail");
             Log($"  Warp         │ ✅ [W] warp 10 matches");
             Log($"  Editor       │ ✅ PongEditorExtension ready");
-            Log($"  Camera       │ ✅ Perspective + sway");
+            Log($"  Camera       │ ✅ Click paddle/ball to follow, [ESC] sway");
             Log("────────────────────────────────────────");
             Log("🏓 Bootstrap complete. Write your paddle code!");
 

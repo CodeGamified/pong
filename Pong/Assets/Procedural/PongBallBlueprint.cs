@@ -30,7 +30,7 @@ namespace Pong.Game
                 new ProceduralPartDef("body", PrimitiveType.Sphere,
                     Vector3.zero,
                     new Vector3(diameter, diameter, diameter),
-                    "ball")
+                    "ball") { Collider = ColliderMode.Box }
             };
         }
     }

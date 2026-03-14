@@ -286,7 +286,8 @@ namespace Pong.UI
                 $"   {TUIColors.Fg(TUIColors.BrightCyan, "[+/-]")}       Time scale",
                 $"   {TUIColors.Fg(TUIColors.BrightCyan, "[SPACE]")}     Pause / Resume",
                 $"   {TUIColors.Fg(TUIColors.BrightCyan, "[W]")}         Warp forward 10 matches",
-                $"   {TUIColors.Fg(TUIColors.BrightCyan, "[ESC]")}       Cancel warp",
+                $"   {TUIColors.Fg(TUIColors.BrightCyan, "[ESC]")}       Cancel warp / reset camera",
+                $"   {TUIColors.Fg(TUIColors.BrightCyan, "[Click]")}     Click paddle or ball to follow",
                 $"   {TUIColors.Fg(TUIColors.BrightCyan, $"[{TUIGlyphs.ArrowU}/{TUIGlyphs.ArrowD}]")}       Scroll code windows",
             };
 
