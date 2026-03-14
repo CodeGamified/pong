@@ -4,27 +4,30 @@ using UnityEngine;
 using CodeGamified.Engine;
 using CodeGamified.Engine.Compiler;
 using CodeGamified.Engine.Runtime;
+using Pong.Core;
 using Pong.Game;
 
 namespace Pong.Scripting
 {
     /// <summary>
-    /// PaddleProgram — the player's code-controlled paddle.
+    /// PaddleProgram — code-controlled paddle (player or AI).
     /// Subclasses ProgramBehaviour from .engine.
     ///
-    /// The player writes Python-like code using these builtins:
-    ///   get_ball_x()         → ball X position
-    ///   get_ball_y()         → ball Y position
-    ///   get_ball_vx()        → ball X velocity
-    ///   get_ball_vy()        → ball Y velocity
-    ///   get_paddle_y()       → this paddle's Y
-    ///   get_paddle_x()       → this paddle's X
-    ///   get_score()          → player's score
-    ///   get_opponent_score() → AI's score
-    ///   get_opponent_y()     → AI paddle Y
-    ///   set_target_y(y)      → move paddle to Y
+    /// EXECUTION MODEL (tick-based, deterministic):
+    ///   - Each simulation tick (~60/sec sim-time), the script runs from the top
+    ///   - Fixed instruction budget per tick (CYCLES_PER_TICK)
+    ///   - Memory (variables) persists across ticks
+    ///   - PC resets to 0 each tick — no while loop needed
+    ///   - If script doesn't finish within budget, remaining code is skipped
+    ///   - Smarter scripts win by fitting strategy in fewer instructions
+    ///   - Results are IDENTICAL at 0.5x, 1x, 100x, 1000x speed
     ///
-    /// The code loops every frame. Write your strategy!
+    /// BUILTINS:
+    ///   get_ball_x/y()       → ball position
+    ///   get_ball_vx/vy()     → ball velocity
+    ///   get_paddle_x/y()     → this paddle
+    ///   get_opponent_y()     → opponent paddle Y
+    ///   set_target_y(y)      → move paddle toward Y
     /// </summary>
     public class PaddleProgram : ProgramBehaviour
     {
@@ -34,41 +37,80 @@ namespace Pong.Scripting
         private PongIOHandler _ioHandler;
         private PongCompilerExtension _compilerExt;
 
+        // Execution rate — THE core gameplay constraint
+        public const float OPS_PER_SECOND = 10f;
+        private float _opAccumulator;
+
         // Default starter code
         private const string DEFAULT_CODE = @"# 🏓 PONG — Write your paddle AI!
-# Your code runs every frame in a loop.
+# Your script runs at 10 ops/sec (sim-time).
+# When it finishes, it restarts from the top.
+# Variables persist — use them to track state.
+# The game IS the code. Efficiency wins.
 #
-# AVAILABLE FUNCTIONS:
-#   get_ball_x()         → ball X position
-#   get_ball_y()         → ball Y position  
-#   get_ball_vx()        → ball X velocity
-#   get_ball_vy()        → ball Y velocity
-#   get_paddle_y()       → your paddle Y
-#   get_opponent_y()     → AI paddle Y
-#   set_target_y(y)      → move your paddle to Y
+# BUILTINS:
+#   get_ball_x/y()      → ball position
+#   get_ball_vx/vy()    → ball velocity
+#   get_paddle_x/y()    → your paddle
+#   get_opponent_y()    → opponent Y
+#   set_target_y(y)     → move to Y
 #
-# START SIMPLE — just track the ball:
+# This 2-line script uses ~8 ops per pass:
 ball_y = get_ball_y()
 set_target_y(ball_y)
 ";
 
         public string CurrentSourceCode => _sourceCode;
 
-        public void Initialize(PongPaddle paddle, PongBall ball, PongCourt court)
+        public void Initialize(PongPaddle paddle, PongBall ball, PongCourt court,
+                               string initialCode = null, string programName = "PaddleAI")
         {
             _paddle = paddle;
             _ball = ball;
             _court = court;
             _compilerExt = new PongCompilerExtension();
 
-            _programName = "PaddleAI";
-            _sourceCode = DEFAULT_CODE;
+            _programName = programName;
+            _sourceCode = initialCode ?? DEFAULT_CODE;
             _autoRun = true;
-            _stepDelay = 0.016f;           // ~60fps execution
-            _stepThroughThreshold = 2f;    // Step-through below 2x
 
             // Initial compile
             LoadAndRun(_sourceCode);
+        }
+
+        /// <summary>
+        /// Override Update — drip-feed instructions at OPS_PER_SECOND.
+        /// When script reaches end (HALT), PC resets to 0. Memory persists.
+        /// Deterministic: same sim-time = same ops executed regardless of time scale.
+        /// </summary>
+        protected override void Update()
+        {
+            if (_executor == null || _program == null || _isPaused) return;
+
+            float timeScale = SimulationTime.Instance?.timeScale ?? 1f;
+            if (SimulationTime.Instance != null && SimulationTime.Instance.isPaused) return;
+
+            float simDelta = UnityEngine.Time.deltaTime * timeScale;
+            _opAccumulator += simDelta * OPS_PER_SECOND;
+
+            // Execute accrued ops one at a time
+            int opsToRun = (int)_opAccumulator;
+            _opAccumulator -= opsToRun;
+
+            for (int i = 0; i < opsToRun; i++)
+            {
+                // If halted (end of script), restart from top
+                if (_executor.State.IsHalted)
+                {
+                    _executor.State.PC = 0;
+                    _executor.State.IsHalted = false;
+                }
+
+                _executor.ExecuteOne();
+            }
+
+            if (opsToRun > 0)
+                ProcessEvents();
         }
 
         protected override IGameIOHandler CreateIOHandler()
@@ -79,9 +121,9 @@ set_target_y(ball_y)
 
         protected override CompiledProgram CompileSource(string source, string name)
         {
-            // Wrap in while True loop so code runs every frame
-            string wrappedSource = $"while True:\n{IndentSource(source)}\n    wait(0.016)";
-            return PythonCompiler.Compile(wrappedSource, name, _compilerExt);
+            // Compile straight — no while wrapper, no wait.
+            // Script runs top-to-bottom each tick with a fixed instruction budget.
+            return PythonCompiler.Compile(source, name, _compilerExt);
         }
 
         protected override void ProcessEvents()
@@ -99,34 +141,18 @@ set_target_y(ball_y)
                 }
             }
 
-            // Drain output events (Pong doesn't produce audio, but engine expects this)
+            // Drain output events
             while (_executor.State.OutputEvents.Count > 0)
                 _executor.State.OutputEvents.Dequeue();
         }
 
-        /// <summary>Upload new code (called from TUI editor).</summary>
+        /// <summary>Upload new code (called from TUI editor). Pass null to reset to default.</summary>
         public void UploadCode(string newSource)
         {
-            _sourceCode = newSource;
-            LoadAndRun(newSource);
+            _sourceCode = newSource ?? DEFAULT_CODE;
+            LoadAndRun(_sourceCode);
             Debug.Log($"[PaddleAI] Uploaded new code ({_program?.Instructions?.Length ?? 0} instructions)");
-        }
-
-        /// <summary>Indent each line of source for wrapping inside while True:</summary>
-        private string IndentSource(string source)
-        {
-            var lines = source.Split(new[] { "\r\n", "\n" }, System.StringSplitOptions.None);
-            var sb = new System.Text.StringBuilder();
-            foreach (var line in lines)
-            {
-                if (string.IsNullOrWhiteSpace(line) || line.TrimStart().StartsWith("#"))
-                {
-                    sb.AppendLine($"    {line}");
-                    continue;
-                }
-                sb.AppendLine($"    {line}");
-            }
-            return sb.ToString().TrimEnd();
         }
     }
 }
+

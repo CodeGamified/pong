@@ -1,6 +1,9 @@
 // Copyright CodeGamified 2025-2026
 // MIT License — Pong: Hello World
 using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+using CodeGamified.TUI;
 using Pong.Core;
 using Pong.Game;
 using Pong.AI;
@@ -9,43 +12,43 @@ using Pong.Scripting;
 namespace Pong.UI
 {
     /// <summary>
-    /// TUI Manager for Pong — powered by .engine's TerminalWindow system.
-    /// Shows scoreboard, code editor, leaderboard, AI samples, time controls.
+    /// TUI Manager for Pong — two draggable debugger windows.
+    /// Powered by .engine's CodeDebuggerWindow + TUIEdgeDragger.
     ///
-    /// Layout on screen:
-    ///   ┌──────────────────────────────────┐
-    ///   │  SCOREBOARD  │  LEADERBOARD      │
-    ///   ├──────────────┼──────────────────-─┤
-    ///   │  CODE EDITOR │  AI SAMPLE CODE   │
-    ///   │              │  (learn from AI)  │
-    ///   ├──────────────┴──────────────────-─┤
-    ///   │  STATUS BAR: time scale, match#  │
-    ///   └──────────────────────────────────┘
+    /// Layout (all edges draggable):
+    ///   ┌─────────────────────┬─────────────────────┐
+    ///   │ YOUR CODE           │ AI CODE             │
+    ///   │ PY │ MACHINE │ REGS │ PY │ MACHINE │ INFO │
+    ///   │    │         │      │    │         │      │
+    ///   ├─────────────────────┴─────────────────────┤
+    ///   │ STATUS BAR: score, time, rank, controls   │
+    ///   └───────────────────────────────────────────-┘
     /// </summary>
     public class PongTUIManager : MonoBehaviour
     {
+        // Dependencies
         private PongMatchManager _match;
         private PaddleProgram _playerProgram;
         private PongLeaderboard _leaderboard;
         private PongAIController _ai;
 
-        // TUI state
-        private bool _showCodeEditor = true;
-        private bool _showLeaderboard = true;
-        private bool _showAISamples = false;
-        private AIDifficulty _viewingSampleDifficulty = AIDifficulty.Easy;
+        // Canvas
+        private Canvas _canvas;
+        private RectTransform _canvasRect;
 
-        // Style
-        private GUIStyle _terminalStyle;
-        private GUIStyle _headerStyle;
-        private GUIStyle _codeStyle;
-        private GUIStyle _buttonStyle;
-        private bool _stylesInitialized;
+        // Panels
+        private PongCodeDebugger _playerDebugger;
+        private PongCodeDebugger _aiDebugger;
+        private PongStatusBar _statusBar;
 
-        // Code editor
-        private string _editBuffer = "";
-        private Vector2 _codeScroll;
-        private Vector2 _sampleScroll;
+        // Panel rects
+        private RectTransform _leftPanelRect;
+        private RectTransform _rightPanelRect;
+        private RectTransform _statusBarRect;
+
+        // Font
+        private TMP_FontAsset _font;
+        private const float FONT_SIZE = 13f;
 
         public void Initialize(PongMatchManager match, PaddleProgram program,
                                PongLeaderboard leaderboard, PongAIController ai)
@@ -55,227 +58,127 @@ namespace Pong.UI
             _leaderboard = leaderboard;
             _ai = ai;
 
-            if (_playerProgram != null)
-                _editBuffer = _playerProgram.CurrentSourceCode;
+            BuildCanvas();
+            BuildPanels();
         }
 
-        private void InitStyles()
+        // ═══════════════════════════════════════════════════════════════
+        // CANVAS
+        // ═══════════════════════════════════════════════════════════════
+
+        private void BuildCanvas()
         {
-            if (_stylesInitialized) return;
-            _stylesInitialized = true;
+            var canvasGO = new GameObject("PongTUI_Canvas");
+            canvasGO.transform.SetParent(transform, false);
 
-            _terminalStyle = new GUIStyle(GUI.skin.box)
+            _canvas = canvasGO.AddComponent<Canvas>();
+            _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            _canvas.sortingOrder = 100;
+
+            var scaler = canvasGO.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920, 1080);
+            scaler.matchWidthOrHeight = 0.5f;
+
+            canvasGO.AddComponent<GraphicRaycaster>();
+            _canvasRect = canvasGO.GetComponent<RectTransform>();
+
+            // Ensure EventSystem exists
+            if (FindObjectOfType<UnityEngine.EventSystems.EventSystem>() == null)
             {
-                normal = { textColor = new Color(0f, 1f, 0.4f), background = MakeTex(1, 1, new Color(0.05f, 0.05f, 0.1f, 0.95f)) },
-                font = Font.CreateDynamicFontFromOSFont("Consolas", 14),
-                fontSize = 14,
-                alignment = TextAnchor.UpperLeft,
-                padding = new RectOffset(8, 8, 8, 8),
-                wordWrap = true
-            };
-
-            _headerStyle = new GUIStyle(_terminalStyle)
-            {
-                fontSize = 16,
-                fontStyle = FontStyle.Bold,
-                normal = { textColor = Color.cyan }
-            };
-
-            _codeStyle = new GUIStyle(GUI.skin.textArea)
-            {
-                normal = { textColor = new Color(0f, 1f, 0.4f), background = MakeTex(1, 1, new Color(0.02f, 0.02f, 0.06f, 0.95f)) },
-                font = Font.CreateDynamicFontFromOSFont("Consolas", 13),
-                fontSize = 13,
-                wordWrap = false,
-                padding = new RectOffset(6, 6, 6, 6)
-            };
-
-            _buttonStyle = new GUIStyle(GUI.skin.button)
-            {
-                normal = { textColor = Color.white, background = MakeTex(1, 1, new Color(0.2f, 0.2f, 0.4f, 0.9f)) },
-                hover = { textColor = Color.cyan, background = MakeTex(1, 1, new Color(0.3f, 0.3f, 0.5f, 0.9f)) },
-                fontSize = 13,
-                fontStyle = FontStyle.Bold
-            };
-        }
-
-        private void OnGUI()
-        {
-            InitStyles();
-
-            float sw = Screen.width;
-            float sh = Screen.height;
-            float margin = 10f;
-
-            // ── SCOREBOARD (top center) ──
-            DrawScoreboard(sw, margin);
-
-            // ── STATUS BAR (bottom) ──
-            DrawStatusBar(sw, sh, margin);
-
-            // ── CODE EDITOR (left panel) ──
-            if (_showCodeEditor)
-                DrawCodeEditor(margin, 80f, sw * 0.35f, sh - 160f);
-
-            // ── LEADERBOARD (top right) ──
-            if (_showLeaderboard && _leaderboard != null)
-                DrawLeaderboard(sw - sw * 0.3f - margin, 80f, sw * 0.3f, sh * 0.3f);
-
-            // ── AI SAMPLE CODE (right panel, below leaderboard) ──
-            if (_showAISamples)
-                DrawAISamples(sw - sw * 0.3f - margin, 80f + sh * 0.32f, sw * 0.3f, sh * 0.45f);
-
-            // ── TOGGLE KEYS ──
-            HandleInputToggles();
-        }
-
-        private void DrawScoreboard(float sw, float margin)
-        {
-            float w = 400f;
-            float h = 60f;
-            float x = (sw - w) / 2f;
-
-            string score = _match != null
-                ? $"  YOUR CODE: {_match.LeftScore}   │   AI ({_ai?.Difficulty}): {_match.RightScore}  "
-                : "  PONG — Write Code. Beat AI. Level Up.  ";
-
-            GUI.Box(new Rect(x, margin, w, h), score, _headerStyle);
-        }
-
-        private void DrawStatusBar(float sw, float sh, float margin)
-        {
-            float h = 30f;
-            float y = sh - h - margin;
-            string timeInfo = SimulationTime.Instance != null
-                ? $"  TIME: {SimulationTime.Instance.GetFormattedTime()} │ " +
-                  $"SPEED: {SimulationTime.Instance.GetFormattedTimeScale()} │ " +
-                  $"+/- to change │ SPACE to pause"
-                : "";
-
-            string matchInfo = _match != null
-                ? $" │ MATCHES: {_match.MatchesPlayed} (W:{_match.PlayerWins} L:{_match.AIWins})"
-                : "";
-
-            string rankInfo = _leaderboard != null
-                ? $" │ RANK: {_leaderboard.CurrentRank}"
-                : "";
-
-            GUI.Box(new Rect(margin, y, sw - margin * 2, h),
-                $"{timeInfo}{matchInfo}{rankInfo}  │  [TAB] code  [L] leaderboard  [S] AI samples",
-                _terminalStyle);
-        }
-
-        private void DrawCodeEditor(float x, float y, float w, float h)
-        {
-            GUI.Box(new Rect(x, y, w, 28f),
-                "  CODE EDITOR — Write your paddle AI", _headerStyle);
-
-            _codeScroll = GUI.BeginScrollView(
-                new Rect(x, y + 30f, w, h - 70f),
-                _codeScroll,
-                new Rect(0, 0, w - 20f, Mathf.Max(h - 70f, _editBuffer.Split('\n').Length * 18f)));
-
-            _editBuffer = GUI.TextArea(
-                new Rect(0, 0, w - 20f, Mathf.Max(h - 70f, _editBuffer.Split('\n').Length * 18f)),
-                _editBuffer, _codeStyle);
-
-            GUI.EndScrollView();
-
-            // Buttons row
-            float btnY = y + h - 36f;
-            float btnW = (w - 20f) / 3f;
-
-            if (GUI.Button(new Rect(x + 5f, btnY, btnW, 30f), "▶ UPLOAD & RUN", _buttonStyle))
-            {
-                if (_playerProgram != null)
-                    _playerProgram.UploadCode(_editBuffer);
-            }
-
-            if (GUI.Button(new Rect(x + btnW + 10f, btnY, btnW, 30f), "⟳ RESET CODE", _buttonStyle))
-            {
-                _editBuffer = @"# Just track the ball:
-ball_y = get_ball_y()
-set_target_y(ball_y)";
-            }
-
-            if (GUI.Button(new Rect(x + btnW * 2 + 15f, btnY, btnW, 30f), "📋 LOAD SAMPLE", _buttonStyle))
-            {
-                _showAISamples = !_showAISamples;
+                var esGO = new GameObject("EventSystem");
+                esGO.AddComponent<UnityEngine.EventSystems.EventSystem>();
+                esGO.AddComponent<UnityEngine.EventSystems.StandaloneInputModule>();
             }
         }
 
-        private void DrawLeaderboard(float x, float y, float w, float h)
+        // ═══════════════════════════════════════════════════════════════
+        // PANELS
+        // ═══════════════════════════════════════════════════════════════
+
+        private void BuildPanels()
         {
-            GUI.Box(new Rect(x, y, w, h), _leaderboard.GetSummary(), _terminalStyle);
+            // ── Left panel: Player's code debugger ──
+            _leftPanelRect = CreatePanel("PlayerPanel",
+                new Vector2(0f, 0.04f),
+                new Vector2(0.50f, 1f));
+
+            _playerDebugger = _leftPanelRect.gameObject.AddComponent<PongCodeDebugger>();
+            AddPanelBackground(_leftPanelRect);
+            _playerDebugger.InitializeProgrammatic(GetFont(), FONT_SIZE,
+                _leftPanelRect.GetComponent<Image>());
+            _playerDebugger.SetTitle("YOUR CODE");
+            _playerDebugger.Bind(_playerProgram);
+
+            // Draggers: right edge + bottom edge
+            TUIEdgeDragger.Create(_leftPanelRect, _canvasRect, TUIEdgeDragger.Edge.Right);
+            TUIEdgeDragger.Create(_leftPanelRect, _canvasRect, TUIEdgeDragger.Edge.Bottom);
+
+            // ── Right panel: AI code debugger ──
+            _rightPanelRect = CreatePanel("AIPanel",
+                new Vector2(0.51f, 0.04f),
+                new Vector2(1f, 1f));
+
+            _aiDebugger = _rightPanelRect.gameObject.AddComponent<PongCodeDebugger>();
+            AddPanelBackground(_rightPanelRect);
+            _aiDebugger.InitializeProgrammatic(GetFont(), FONT_SIZE,
+                _rightPanelRect.GetComponent<Image>());
+            _aiDebugger.SetTitle("AI CODE");
+            _aiDebugger.Bind(_ai.Program);
+
+            // Daggers: left edge + bottom edge
+            TUIEdgeDragger.Create(_rightPanelRect, _canvasRect, TUIEdgeDragger.Edge.Left);
+            TUIEdgeDragger.Create(_rightPanelRect, _canvasRect, TUIEdgeDragger.Edge.Bottom);
+
+            // ── Status bar (bottom 4%) ──
+            _statusBarRect = CreatePanel("StatusBar",
+                new Vector2(0f, 0f),
+                new Vector2(1f, 0.04f));
+
+            _statusBar = _statusBarRect.gameObject.AddComponent<PongStatusBar>();
+            AddPanelBackground(_statusBarRect);
+            _statusBar.InitializeProgrammatic(GetFont(), FONT_SIZE - 1f,
+                _statusBarRect.GetComponent<Image>());
+            _statusBar.Bind(_match, _leaderboard, _ai, _playerProgram);
+
+            // Dragger: top edge of status bar
+            TUIEdgeDragger.Create(_statusBarRect, _canvasRect, TUIEdgeDragger.Edge.Top);
         }
 
-        private void DrawAISamples(float x, float y, float w, float h)
+        // ═══════════════════════════════════════════════════════════════
+        // HELPERS
+        // ═══════════════════════════════════════════════════════════════
+
+        private RectTransform CreatePanel(string name, Vector2 anchorMin, Vector2 anchorMax)
         {
-            // Difficulty tabs
-            float tabW = w / 4f;
-            var diffs = new[] { AIDifficulty.Easy, AIDifficulty.Medium, AIDifficulty.Hard, AIDifficulty.Expert };
-            for (int i = 0; i < 4; i++)
-            {
-                string label = diffs[i].ToString().ToUpper();
-                if (diffs[i] == _viewingSampleDifficulty) label = $"[{label}]";
-                if (GUI.Button(new Rect(x + i * tabW, y, tabW, 25f), label, _buttonStyle))
-                    _viewingSampleDifficulty = diffs[i];
-            }
+            var go = new GameObject(name);
+            go.transform.SetParent(_canvasRect, false);
 
-            string code = PongAIController.GetSampleCode(_viewingSampleDifficulty);
-            _sampleScroll = GUI.BeginScrollView(
-                new Rect(x, y + 28f, w, h - 65f), _sampleScroll,
-                new Rect(0, 0, w - 20f, code.Split('\n').Length * 18f));
-            GUI.TextArea(new Rect(0, 0, w - 20f, code.Split('\n').Length * 18f), code, _codeStyle);
-            GUI.EndScrollView();
+            var rt = go.AddComponent<RectTransform>();
+            rt.anchorMin = anchorMin;
+            rt.anchorMax = anchorMax;
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
 
-            if (GUI.Button(new Rect(x + 5f, y + h - 34f, w - 10f, 30f), 
-                $"📋 COPY {_viewingSampleDifficulty} CODE TO EDITOR", _buttonStyle))
-            {
-                _editBuffer = PongAIController.GetSampleCode(_viewingSampleDifficulty);
-            }
+            return rt;
         }
 
-        private void HandleInputToggles()
+        private void AddPanelBackground(RectTransform panel)
         {
-            if (Input.GetKeyDown(KeyCode.Tab)) _showCodeEditor = !_showCodeEditor;
-            if (Input.GetKeyDown(KeyCode.L)) _showLeaderboard = !_showLeaderboard;
-            if (Input.GetKeyDown(KeyCode.S) && !GUI.GetNameOfFocusedControl().Contains("TextArea"))
-                _showAISamples = !_showAISamples;
-
-            // Quick AI difficulty switch with number keys (when not typing)
-            if (!IsTyping())
-            {
-                if (Input.GetKeyDown(KeyCode.Alpha1)) SetAIDifficulty(AIDifficulty.Easy);
-                if (Input.GetKeyDown(KeyCode.Alpha2)) SetAIDifficulty(AIDifficulty.Medium);
-                if (Input.GetKeyDown(KeyCode.Alpha3)) SetAIDifficulty(AIDifficulty.Hard);
-                if (Input.GetKeyDown(KeyCode.Alpha4)) SetAIDifficulty(AIDifficulty.Expert);
-            }
+            var img = panel.gameObject.GetComponent<Image>();
+            if (img == null)
+                img = panel.gameObject.AddComponent<Image>();
+            img.color = new Color(0.01f, 0.03f, 0.06f, 0.92f);
+            img.raycastTarget = true;
         }
 
-        private void SetAIDifficulty(AIDifficulty diff)
+        private TMP_FontAsset GetFont()
         {
-            if (_ai != null)
-            {
-                _ai.SetDifficulty(diff);
-                Debug.Log($"[PONG] AI difficulty → {diff}");
-            }
-        }
-
-        private bool IsTyping()
-        {
-            // Rough heuristic — if code editor is visible, user might be typing
-            return false; // OnGUI textareas handle this internally
-        }
-
-        private Texture2D MakeTex(int width, int height, Color col)
-        {
-            var pixels = new Color[width * height];
-            for (int i = 0; i < pixels.Length; i++) pixels[i] = col;
-            var tex = new Texture2D(width, height);
-            tex.SetPixels(pixels);
-            tex.Apply();
-            return tex;
+            if (_font != null) return _font;
+            _font = Resources.Load<TMP_FontAsset>("Fonts/Unifont SDF");
+            if (_font == null)
+                _font = Resources.Load<TMP_FontAsset>("Fonts & Materials/LiberationSans SDF");
+            return _font;
         }
     }
 }

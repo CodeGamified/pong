@@ -27,11 +27,15 @@ namespace Pong.Game
         public int PlayerWins { get; private set; }
         public int AIWins { get; private set; }
 
+        private int _rallyCount;
+        private const int STALEMATE_THRESHOLD = 100;
+
         // Events
         public System.Action<PaddleSide, int, int> OnPointScored;   // (who scored, leftScore, rightScore)
         public System.Action<PaddleSide> OnMatchEnded;              // winner
         public System.Action OnMatchStarted;
         public System.Action OnServe;
+        public System.Action<int> OnStalemate;                      // rally count
 
         public void Initialize(PongBall ball, PongPaddle left, PongPaddle right,
                                PongCourt court, int pointsToWin, bool autoRestart, float serveDelay)
@@ -50,6 +54,7 @@ namespace Pong.Game
 
             // Wire scoring
             _ball.OnGoalScored += OnGoal;
+            _ball.OnPaddleHit += OnPaddleHit;
         }
 
         public void StartMatch()
@@ -61,9 +66,27 @@ namespace Pong.Game
             ServeAfterDelay(PaddleSide.Right); // First serve toward AI
         }
 
+        private void OnPaddleHit(PaddleSide side)
+        {
+            if (!MatchInProgress) return;
+
+            _rallyCount++;
+            if (_rallyCount >= STALEMATE_THRESHOLD)
+            {
+                Debug.Log($"[Match] STALEMATE — {_rallyCount} volleys, no point awarded");
+                OnStalemate?.Invoke(_rallyCount);
+                _rallyCount = 0;
+
+                // Re-serve toward a random side
+                PaddleSide toward = (Random.value > 0.5f) ? PaddleSide.Right : PaddleSide.Left;
+                ServeAfterDelay(toward);
+            }
+        }
+
         private void OnGoal(PaddleSide scorer)
         {
             if (!MatchInProgress) return;
+            _rallyCount = 0;
 
             if (scorer == PaddleSide.Left) LeftScore++;
             else RightScore++;
@@ -118,6 +141,7 @@ namespace Pong.Game
                 yield return null;
             }
 
+            _rallyCount = 0;
             OnServe?.Invoke();
             _ball.Serve(toward);
         }
@@ -139,7 +163,10 @@ namespace Pong.Game
         private void OnDestroy()
         {
             if (_ball != null)
+            {
                 _ball.OnGoalScored -= OnGoal;
+                _ball.OnPaddleHit -= OnPaddleHit;
+            }
         }
     }
 }
