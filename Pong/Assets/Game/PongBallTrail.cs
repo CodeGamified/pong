@@ -89,7 +89,7 @@ namespace Pong.Game
             _currentLineColor = GoldHDR;
 
             // Shared material — vertex colors drive the color per-segment
-            var shader = Shader.Find("Sprites/Default")
+            var shader = Shader.Find("Universal Render Pipeline/Unlit")
                 ?? Shader.Find("Unlit/Color");
             _lineMaterial = new Material(shader);
 
@@ -102,7 +102,7 @@ namespace Pong.Game
             _trailParts = new Transform[_trailLength];
             _trailRenderers = new Renderer[_trailLength];
 
-            var shader = Shader.Find("Universal Render Pipeline/Lit")
+            var shader = Shader.Find("Universal Render Pipeline/Unlit")
                 ?? Shader.Find("Standard")
                 ?? Shader.Find("Unlit/Color");
 
