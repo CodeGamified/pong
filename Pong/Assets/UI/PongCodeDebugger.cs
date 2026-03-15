@@ -79,9 +79,7 @@ namespace Pong.UI
             for (int i = scrollOffset; i < src.Length && lines.Count < ContentRows; i++)
             {
                 bool isActive = (i == activeLine);
-                string prefix = isActive
-                    ? TUIColors.Fg(TUIColors.BrightGreen, TUIGlyphs.ArrowR)
-                    : " ";
+                string prefix = " ";
                 string num = TUIColors.Dimmed($"{i + 1,3}");
                 string text = isActive
                     ? TUIColors.Fg(TUIColors.BrightGreen, src[i])
@@ -98,16 +96,15 @@ namespace Pong.UI
 
             var instructions = _program.Program.Instructions;
             int total = instructions.Length;
-            int start = Mathf.Max(0, pc - ContentRows / 3);
+            int offset = pc - ContentRows / 3;
+            int visibleCount = Mathf.Min(ContentRows, total + 2);
 
-            for (int j = 0; j < ContentRows; j++)
+            for (int j = 0; j < visibleCount; j++)
             {
-                int i = (start + j) % total;
+                int i = ((offset + j) % total + total) % total;
                 var inst = instructions[i];
                 bool isPC = (i == pc);
-                string prefix = isPC
-                    ? TUIColors.Fg(TUIColors.BrightCyan, TUIGlyphs.ArrowR)
-                    : " ";
+                string prefix = " ";
                 string addr = TUIColors.Dimmed($"{i:D4}:");
 
                 string opName = inst.Op.ToString();

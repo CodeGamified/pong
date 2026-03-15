@@ -2,6 +2,7 @@
 // MIT License — Pong: Hello World
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 using CodeGamified.TUI;
 using CodeGamified.Time;
 using CodeGamified.Settings;
@@ -19,6 +20,11 @@ namespace Pong.UI
         private bool _panelsReady;
         private int _col2Start;
         private int _col3Start;
+
+        // Audio slider overlays
+        private Slider _masterSlider;
+        private Slider _musicSlider;
+        private Slider _sfxSlider;
 
         protected override void Awake()
         {
@@ -51,6 +57,39 @@ namespace Pong.UI
             foreach (var row in rows)
                 row.SetThreePanelMode(true, _col2Start, _col3Start);
             _panelsReady = true;
+            CreateAudioSliders();
+        }
+
+        private void CreateAudioSliders()
+        {
+            // Audio bars render at content rows 1-3 → actual rows 3,4,5
+            // Bar text: "  Mst [██████████] 100%" — bar starts at char 6, width 12
+            const int barOffset = 6;
+            const int barWidth = 12;
+            int sliderStart = _col3Start + barOffset;
+
+            if (rows.Count <= 5) return;
+
+            // Reposition existing sliders (layout may change after initial creation)
+            if (_masterSlider != null)
+            {
+                rows[3].RepositionSliderOverlay(sliderStart, barWidth);
+                rows[4].RepositionSliderOverlay(sliderStart, barWidth);
+                rows[5].RepositionSliderOverlay(sliderStart, barWidth);
+                return;
+            }
+
+            _masterSlider = rows[3].CreateSliderOverlay(sliderStart, barWidth);
+            _masterSlider.SetValueWithoutNotify(SettingsBridge.MasterVolume);
+            _masterSlider.onValueChanged.AddListener(v => SettingsBridge.SetMasterVolume(v));
+
+            _musicSlider = rows[4].CreateSliderOverlay(sliderStart, barWidth);
+            _musicSlider.SetValueWithoutNotify(SettingsBridge.MusicVolume);
+            _musicSlider.onValueChanged.AddListener(v => SettingsBridge.SetMusicVolume(v));
+
+            _sfxSlider = rows[5].CreateSliderOverlay(sliderStart, barWidth);
+            _sfxSlider.SetValueWithoutNotify(SettingsBridge.SfxVolume);
+            _sfxSlider.onValueChanged.AddListener(v => SettingsBridge.SetSfxVolume(v));
         }
 
         protected override void Update()
@@ -112,6 +151,11 @@ namespace Pong.UI
             string sep2 = Separator(_col3Start - _col2Start - 5);
             string sep3 = Separator(totalChars - _col3Start - 5);
             Set3(1, sep1, sep2, sep3);
+
+            // Sync slider positions with current volumes (e.g. changed via keyboard)
+            if (_masterSlider != null) _masterSlider.SetValueWithoutNotify(SettingsBridge.MasterVolume);
+            if (_musicSlider != null) _musicSlider.SetValueWithoutNotify(SettingsBridge.MusicVolume);
+            if (_sfxSlider != null) _sfxSlider.SetValueWithoutNotify(SettingsBridge.SfxVolume);
 
             // Rows 2+ — three-column content
             var col1 = BuildControlsColumn();

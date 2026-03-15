@@ -1,7 +1,9 @@
 // Copyright CodeGamified 2025-2026
 // MIT License — Pong: Hello World
+using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 using CodeGamified.TUI;
 using Pong.Game;
 using Pong.AI;
@@ -22,6 +24,7 @@ namespace Pong.UI
 
         private bool IsExpanded => totalRows > 3;
         private bool _dualReady;
+        private bool _buttonsCreated;
 
         protected override void Awake()
         {
@@ -55,6 +58,74 @@ namespace Pong.UI
             foreach (var row in rows)
                 row.SetDualColumnMode(true, dividerPos);
             _dualReady = true;
+            CreateOrRepositionButtons();
+        }
+
+        /// <summary>
+        /// Create invisible button overlays for mobile-friendly tap targets,
+        /// or reposition them if layout changed (resize, first-frame correction).
+        /// Left column:  sample load (rows 8-11) + reset (row 13)
+        /// Right column: AI difficulty (rows 8, 10, 12, 14)
+        /// </summary>
+        private void CreateOrRepositionButtons()
+        {
+            int btnWidth = Mathf.Max(6, leftColWidth - 2);
+            int rBtnWidth = Mathf.Max(6, rightColWidth - 2);
+
+            var diffs = new[] { AIDifficulty.Easy, AIDifficulty.Medium, AIDifficulty.Hard, AIDifficulty.Expert };
+
+            if (_buttonsCreated)
+            {
+                // Reposition existing overlays to match updated layout
+                for (int i = 0; i < diffs.Length; i++)
+                {
+                    int r = 8 + i;
+                    if (r < rows.Count)
+                        rows[r].RepositionButtonOverlays(new[] { 2 }, new[] { btnWidth });
+                }
+                if (13 < rows.Count)
+                    rows[13].RepositionButtonOverlays(new[] { 2 }, new[] { btnWidth });
+
+                for (int i = 0; i < diffs.Length; i++)
+                {
+                    int r = 8 + i * 2;
+                    if (r < rows.Count)
+                        rows[r].RepositionRightButtonOverlays(new[] { 2 }, new[] { rBtnWidth });
+                }
+                return;
+            }
+
+            // Left column: sample load buttons on rows 8,9,10,11
+            for (int i = 0; i < diffs.Length; i++)
+            {
+                int r = 8 + i;
+                if (r >= rows.Count) break;
+                var diff = diffs[i];
+                rows[r].CreateButtonOverlays(
+                    new[] { 2 }, new[] { btnWidth },
+                    new Action<int>[] { _ => LoadPlayerSample(diff) });
+            }
+
+            // Left column: reset button on row 13
+            if (13 < rows.Count)
+            {
+                rows[13].CreateButtonOverlays(
+                    new[] { 2 }, new[] { btnWidth },
+                    new Action<int>[] { _ => ResetPlayerScript() });
+            }
+
+            // Right column: AI difficulty buttons on rows 8,10,12,14
+            for (int i = 0; i < diffs.Length; i++)
+            {
+                int r = 8 + i * 2; // skip description rows
+                if (r >= rows.Count) break;
+                var diff = diffs[i];
+                rows[r].CreateRightButtonOverlays(
+                    new[] { 2 }, new[] { rBtnWidth },
+                    new Action<int>[] { _ => SetAIDifficulty(diff) });
+            }
+
+            _buttonsCreated = true;
         }
 
         public void Bind(PongMatchManager match, PaddleProgram playerProgram, PongAIController ai)
@@ -96,12 +167,16 @@ namespace Pong.UI
                 else SetAIDifficulty(AIDifficulty.Expert);
             }
 
-            if (Input.GetKeyDown(KeyCode.R) && _playerProgram != null)
-            {
-                _playerProgram.UploadCode(null);
-                _playerScriptTier = null;
-                Debug.Log("[Menu] Player script reset to starter code");
-            }
+            if (Input.GetKeyDown(KeyCode.R))
+                ResetPlayerScript();
+        }
+
+        private void ResetPlayerScript()
+        {
+            if (_playerProgram == null) return;
+            _playerProgram.UploadCode(null);
+            _playerScriptTier = null;
+            Debug.Log("[Menu] Player script reset to starter code");
         }
 
         private void LoadPlayerSample(AIDifficulty diff)
@@ -194,6 +269,8 @@ namespace Pong.UI
             else
             {
                 lines.Add(TUIColors.Dimmed("  No program"));
+                lines.Add(""); // pad to keep button rows stable
+                lines.Add("");
             }
 
             lines.Add("");
