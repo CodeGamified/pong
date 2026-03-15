@@ -20,11 +20,12 @@ namespace Pong.UI
     ///   │ YOUR CODE           │ AI CODE             │
     ///   │ PY │ MACHINE │ REGS │ PY │ MACHINE │ INFO │
     ///   │    │         │      │    │         │      │
-    ///   ├──────────┬──────────┬──────────────────────┤
+    ///   ├──────────┼──────────┼──────────────────────┤
     ///   │ SCRIPTS  │ ██ PONG  │ CONTROLS            │
     ///   │ YOU / AI │  5 — 3   │ [1-4] AI difficulty  │
-    ///   │          │ W:3 L:1  │ [SPACE] pause ...    │
+    ///   │ (panel)  │ (panel)  │ (panel)             │
     ///   └──────────┴──────────┴──────────────────────┘
+    ///   Left/right status column dividers linked to code panels above.
     /// </summary>
     public class PongTUIManager : MonoBehaviour, ISettingsListener
     {
@@ -41,12 +42,16 @@ namespace Pong.UI
         // Panels
         private PongCodeDebugger _playerDebugger;
         private PongCodeDebugger _aiDebugger;
-        private PongStatusBar _statusBar;
+        private PongStatusLeft _statusLeft;
+        private PongStatusCenter _statusCenter;
+        private PongStatusRight _statusRight;
 
         // Panel rects
         private RectTransform _leftPanelRect;
         private RectTransform _rightPanelRect;
-        private RectTransform _statusBarRect;
+        private RectTransform _statusLeftRect;
+        private RectTransform _statusCenterRect;
+        private RectTransform _statusRightRect;
 
         // Font
         private TMP_FontAsset _font;
@@ -82,10 +87,14 @@ namespace Pong.UI
             // Destroy existing panels and rebuild with new font size
             if (_leftPanelRect != null) Destroy(_leftPanelRect.gameObject);
             if (_rightPanelRect != null) Destroy(_rightPanelRect.gameObject);
-            if (_statusBarRect != null) Destroy(_statusBarRect.gameObject);
+            if (_statusLeftRect != null) Destroy(_statusLeftRect.gameObject);
+            if (_statusCenterRect != null) Destroy(_statusCenterRect.gameObject);
+            if (_statusRightRect != null) Destroy(_statusRightRect.gameObject);
             _playerDebugger = null;
             _aiDebugger = null;
-            _statusBar = null;
+            _statusLeft = null;
+            _statusCenter = null;
+            _statusRight = null;
 
             BuildPanels();
         }
@@ -139,7 +148,7 @@ namespace Pong.UI
             _playerDebugger.Bind(_playerProgram);
 
             // Draggers: right edge + bottom edge
-            TUIEdgeDragger.Create(_leftPanelRect, _canvasRect, TUIEdgeDragger.Edge.Right);
+            var leftRight = TUIEdgeDragger.Create(_leftPanelRect, _canvasRect, TUIEdgeDragger.Edge.Right);
             var leftBottom = TUIEdgeDragger.Create(_leftPanelRect, _canvasRect, TUIEdgeDragger.Edge.Bottom);
 
             // ── Right panel: AI code debugger ──
@@ -155,29 +164,83 @@ namespace Pong.UI
             _aiDebugger.Bind(_ai.Program);
 
             // Draggers: left edge + bottom edge
-            TUIEdgeDragger.Create(_rightPanelRect, _canvasRect, TUIEdgeDragger.Edge.Left);
+            var rightLeft = TUIEdgeDragger.Create(_rightPanelRect, _canvasRect, TUIEdgeDragger.Edge.Left);
             var rightBottom = TUIEdgeDragger.Create(_rightPanelRect, _canvasRect, TUIEdgeDragger.Edge.Bottom);
 
-            // ── Status bar (bottom 25%) ──
-            _statusBarRect = CreatePanel("StatusBar",
+            // ── Left status panel (bottom-left, aligned with player code) ──
+            _statusLeftRect = CreatePanel("StatusLeft",
                 new Vector2(0f, 0f),
+                new Vector2(0.25f, 0.25f));
+
+            _statusLeft = _statusLeftRect.gameObject.AddComponent<PongStatusLeft>();
+            AddPanelBackground(_statusLeftRect);
+            _statusLeft.InitializeProgrammatic(GetFont(), _fontSize - 1f,
+                _statusLeftRect.GetComponent<Image>());
+            _statusLeft.Bind(_match, _playerProgram, _ai);
+
+            var statusLeftRight = TUIEdgeDragger.Create(_statusLeftRect, _canvasRect, TUIEdgeDragger.Edge.Right);
+            var statusLeftTop = TUIEdgeDragger.Create(_statusLeftRect, _canvasRect, TUIEdgeDragger.Edge.Top);
+
+            // ── Center status panel (bottom-center, PONG ASCII + scores) ──
+            _statusCenterRect = CreatePanel("StatusCenter",
+                new Vector2(0.25f, 0f),
+                new Vector2(0.75f, 0.25f));
+
+            _statusCenter = _statusCenterRect.gameObject.AddComponent<PongStatusCenter>();
+            AddPanelBackground(_statusCenterRect);
+            _statusCenter.InitializeProgrammatic(GetFont(), _fontSize - 1f,
+                _statusCenterRect.GetComponent<Image>());
+            _statusCenter.Bind(_match, _leaderboard);
+
+            var statusCenterTop = TUIEdgeDragger.Create(_statusCenterRect, _canvasRect, TUIEdgeDragger.Edge.Top);
+
+            // ── Right status panel (bottom-right, aligned with AI code) ──
+            _statusRightRect = CreatePanel("StatusRight",
+                new Vector2(0.75f, 0f),
                 new Vector2(1f, 0.25f));
 
-            _statusBar = _statusBarRect.gameObject.AddComponent<PongStatusBar>();
-            AddPanelBackground(_statusBarRect);
-            _statusBar.InitializeProgrammatic(GetFont(), _fontSize - 1f,
-                _statusBarRect.GetComponent<Image>());
-            _statusBar.Bind(_match, _leaderboard, _ai, _playerProgram);
+            _statusRight = _statusRightRect.gameObject.AddComponent<PongStatusRight>();
+            AddPanelBackground(_statusRightRect);
+            _statusRight.InitializeProgrammatic(GetFont(), _fontSize - 1f,
+                _statusRightRect.GetComponent<Image>());
 
-            // Dragger: top edge of status bar
-            var statusTop = TUIEdgeDragger.Create(_statusBarRect, _canvasRect, TUIEdgeDragger.Edge.Top);
+            var statusRightLeft = TUIEdgeDragger.Create(_statusRightRect, _canvasRect, TUIEdgeDragger.Edge.Left);
+            var statusRightTop = TUIEdgeDragger.Create(_statusRightRect, _canvasRect, TUIEdgeDragger.Edge.Top);
 
-            // Link edges: status bar top ↔ code panel bottoms
-            statusTop.LinkEdge(_leftPanelRect, TUIEdgeDragger.Edge.Bottom)
-                     .LinkEdge(_rightPanelRect, TUIEdgeDragger.Edge.Bottom);
-            leftBottom.LinkEdge(_statusBarRect, TUIEdgeDragger.Edge.Top)
+            // ── Link vertical edges: code panels ↔ status panels ──
+            // Left code right edge → left status right + center status left
+            leftRight.LinkEdge(_statusLeftRect, TUIEdgeDragger.Edge.Right)
+                     .LinkEdge(_statusCenterRect, TUIEdgeDragger.Edge.Left);
+            // Left status right edge → left code right + center status left
+            statusLeftRight.LinkEdge(_leftPanelRect, TUIEdgeDragger.Edge.Right)
+                           .LinkEdge(_statusCenterRect, TUIEdgeDragger.Edge.Left);
+            // Right code left edge → right status left + center status right
+            rightLeft.LinkEdge(_statusRightRect, TUIEdgeDragger.Edge.Left)
+                     .LinkEdge(_statusCenterRect, TUIEdgeDragger.Edge.Right);
+            // Right status left edge → right code left + center status right
+            statusRightLeft.LinkEdge(_rightPanelRect, TUIEdgeDragger.Edge.Left)
+                           .LinkEdge(_statusCenterRect, TUIEdgeDragger.Edge.Right);
+
+            // ── Link horizontal edges: all status tops ↔ code bottoms ──
+            statusLeftTop.LinkEdge(_statusCenterRect, TUIEdgeDragger.Edge.Top)
+                         .LinkEdge(_statusRightRect, TUIEdgeDragger.Edge.Top)
+                         .LinkEdge(_leftPanelRect, TUIEdgeDragger.Edge.Bottom)
+                         .LinkEdge(_rightPanelRect, TUIEdgeDragger.Edge.Bottom);
+            statusCenterTop.LinkEdge(_statusLeftRect, TUIEdgeDragger.Edge.Top)
+                           .LinkEdge(_statusRightRect, TUIEdgeDragger.Edge.Top)
+                           .LinkEdge(_leftPanelRect, TUIEdgeDragger.Edge.Bottom)
+                           .LinkEdge(_rightPanelRect, TUIEdgeDragger.Edge.Bottom);
+            statusRightTop.LinkEdge(_statusLeftRect, TUIEdgeDragger.Edge.Top)
+                          .LinkEdge(_statusCenterRect, TUIEdgeDragger.Edge.Top)
+                          .LinkEdge(_leftPanelRect, TUIEdgeDragger.Edge.Bottom)
+                          .LinkEdge(_rightPanelRect, TUIEdgeDragger.Edge.Bottom);
+            leftBottom.LinkEdge(_statusLeftRect, TUIEdgeDragger.Edge.Top)
+                      .LinkEdge(_statusCenterRect, TUIEdgeDragger.Edge.Top)
+                      .LinkEdge(_statusRightRect, TUIEdgeDragger.Edge.Top)
                       .LinkEdge(_rightPanelRect, TUIEdgeDragger.Edge.Bottom);
-            rightBottom.LinkEdge(_statusBarRect, TUIEdgeDragger.Edge.Top)
+            rightBottom.LinkEdge(_statusLeftRect, TUIEdgeDragger.Edge.Top)
+                       .LinkEdge(_statusCenterRect, TUIEdgeDragger.Edge.Top)
+                       .LinkEdge(_statusRightRect, TUIEdgeDragger.Edge.Top)
                        .LinkEdge(_leftPanelRect, TUIEdgeDragger.Edge.Bottom);
         }
 

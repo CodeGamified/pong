@@ -38,12 +38,12 @@ namespace Pong.Scripting
         private PongCompilerExtension _compilerExt;
 
         // Execution rate — THE core gameplay constraint
-        public const float OPS_PER_SECOND = 10f;
+        public const float OPS_PER_SECOND = 20f;
         private float _opAccumulator;
 
         // Default starter code
         private const string DEFAULT_CODE = @"# 🏓 PONG — Write your paddle AI!
-# Your script runs at 10 ops/sec (sim-time).
+# Your script runs at 20 ops/sec (sim-time).
 # When it finishes, it restarts from the top.
 # Variables persist — use them to track state.
 # The game IS the code. Efficiency wins.
@@ -156,6 +156,14 @@ set_target_y(ball_y)
             LoadAndRun(_sourceCode);
             Debug.Log($"[PaddleAI] Uploaded new code ({_program?.Instructions?.Length ?? 0} instructions)");
             OnCodeChanged?.Invoke();
+        }
+
+        /// <summary>Reset execution state (PC, registers, memory) without recompiling.</summary>
+        public void ResetExecution()
+        {
+            if (_executor?.State == null) return;
+            _executor.State.Reset();
+            _opAccumulator = 0f;
         }
     }
 }

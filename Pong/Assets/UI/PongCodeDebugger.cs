@@ -97,10 +97,12 @@ namespace Pong.UI
             if (!HasLiveProgram) return lines;
 
             var instructions = _program.Program.Instructions;
+            int total = instructions.Length;
             int start = Mathf.Max(0, pc - ContentRows / 3);
 
-            for (int i = start; i < instructions.Length && lines.Count < ContentRows; i++)
+            for (int j = 0; j < ContentRows; j++)
             {
+                int i = (start + j) % total;
                 var inst = instructions[i];
                 bool isPC = (i == pc);
                 string prefix = isPC
@@ -141,7 +143,7 @@ namespace Pong.UI
                     lines.Add($" {TUIColors.Dimmed(rName),-4} {rVal}");
             }
 
-            lines.Add(Separator(col3Start > 0 ? totalChars - col3Start - 2 : 16));
+            lines.Add(Separator(col3Start > 0 ? totalChars - col3Start - 5 : 13));
 
             // Flags
             lines.Add($" FLAGS: {state.Flags}");
@@ -151,7 +153,7 @@ namespace Pong.UI
             // Variables
             if (state.NameToAddress.Count > 0)
             {
-                lines.Add(Separator(col3Start > 0 ? totalChars - col3Start - 2 : 16));
+                lines.Add(Separator(col3Start > 0 ? totalChars - col3Start - 5 : 13));
                 lines.Add(TUIColors.Fg(TUIColors.BrightCyan, " VARIABLES"));
                 foreach (var kvp in state.NameToAddress)
                 {

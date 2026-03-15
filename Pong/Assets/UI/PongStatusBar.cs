@@ -160,7 +160,8 @@ namespace Pong.UI
 
         private void InitRevealThresholds()
         {
-            int totalChars = CodeRows[0].Length * 10; // 43 × 10 rows
+            int innerW = CodeRows[0].Length - ArtBorderLen * 2;
+            int totalChars = innerW * 10;
             _revealThresholds = new float[totalChars];
             for (int i = 0; i < totalChars; i++)
                 _revealThresholds[i] = Random.value;
@@ -399,7 +400,7 @@ namespace Pong.UI
         {
             var lines = new List<string>();
 
-            // Animated ASCII art (5 rows top word + blank + 5 rows bottom word)
+            // Animated ASCII art (bordered block: 5+5 word rows)
             lines.AddRange(BuildAsciiArt());
             lines.Add("");
 
@@ -440,7 +441,13 @@ namespace Pong.UI
 
         // ── ASCII ART ENGINE ────────────────────────────────────
 
-        /// <summary>Build 11 lines: 5 top-word rows + blank + 5 bottom-word rows.</summary>
+        private const int ArtBorderLen = 8; // length of "░▒▓██▓▒░"
+
+        /// <summary>Strip the ░▒▓██▓▒░ decorative borders from an ASCII art row.</summary>
+        private static string StripArtBorder(string row)
+            => row.Substring(ArtBorderLen, row.Length - ArtBorderLen * 2);
+
+        /// <summary>Build 13 lines: border + 5 top rows + blank + 5 bottom rows + border.</summary>
         private string[] BuildAsciiArt()
         {
             switch (_asciiPhase)
@@ -449,7 +456,7 @@ namespace Pong.UI
                 case 2: return ColorizeBlock(PingRows, PongRows);
                 case 1: return DecipherBlock(CodeRows, GameRows, PingRows, PongRows);
                 case 3: return DecipherBlock(PingRows, PongRows, CodeRows, GameRows);
-                default: return new string[11];
+                default: return new string[13];
             }
         }
 
@@ -460,69 +467,105 @@ namespace Pong.UI
         /// <summary>Lerp a Color32 by column position for horizontal gradient.</summary>
         private static Color32 GradientAt(float t)
         {
-            // Accent1 (cyan) → Accent2 (magenta)
             byte r = (byte)Mathf.Lerp(TUIColors.BrightCyan.r, TUIColors.BrightMagenta.r, t);
             byte g = (byte)Mathf.Lerp(TUIColors.BrightCyan.g, TUIColors.BrightMagenta.g, t);
             byte b = (byte)Mathf.Lerp(TUIColors.BrightCyan.b, TUIColors.BrightMagenta.b, t);
             return new Color32(r, g, b, 255);
         }
 
-        /// <summary>Apply per-character horizontal gradient to a row string.</summary>
-        private string GradientRow(string row)
+        // ── Gradient border helpers ─────────────────────────────
+
+        /// <summary>Build horizontal border: corner + fill×N + corner, gradient-colored.</summary>
+        private string GradientBorderH(char left, char fill, char right, int innerWidth)
+        {
+            int total = innerWidth + 2;
+            var sb = new StringBuilder(total * 32);
+            sb.Append(TUIColors.Fg(GradientAt(0f), left.ToString()));
+            for (int i = 0; i < innerWidth; i++)
+            {
+                float t = total > 1 ? (float)(i + 1) / (total - 1) : 0f;
+                sb.Append(TUIColors.Fg(GradientAt(t), fill.ToString()));
+            }
+            sb.Append(TUIColors.Fg(GradientAt(1f), right.ToString()));
+            return Mono(sb.ToString());
+        }
+
+        /// <summary>Wrap raw colored content in gradient-colored ║ side borders + Mono.</summary>
+        private string GradientBorderV(string rawContent)
+        {
+            var sb = new StringBuilder(rawContent.Length + 128);
+            sb.Append(TUIColors.Fg(GradientAt(0f), "║"));
+            sb.Append(rawContent);
+            sb.Append(TUIColors.Fg(GradientAt(1f), "║"));
+            return Mono(sb.ToString());
+        }
+
+        /// <summary>Build per-char gradient content (no Mono), mapped to bordered width.</summary>
+        private string GradientRowRaw(string row, int totalBorderedWidth)
         {
             int len = row.Length;
             if (len == 0) return "";
             var sb = new StringBuilder(len * 32);
             for (int i = 0; i < len; i++)
             {
-                float t = len > 1 ? (float)i / (len - 1) : 0f;
+                float t = totalBorderedWidth > 1 ? (float)(i + 1) / (totalBorderedWidth - 1) : 0f;
                 sb.Append(TUIColors.Fg(GradientAt(t), row[i].ToString()));
             }
-            return Mono(sb.ToString());
+            return sb.ToString();
         }
 
-        /// <summary>Static display: both words use horizontal gradient.</summary>
+        /// <summary>Static display: gradient border around both words with blank row between.</summary>
         private string[] ColorizeBlock(string[] top, string[] bot)
         {
-            var lines = new string[11];
+            int innerW = StripArtBorder(top[0]).Length;
+            int totalW = innerW + 2;
+            var lines = new string[13];
+            lines[0] = GradientBorderH('╔', '═', '╗', innerW);
             for (int i = 0; i < 5; i++)
-                lines[i] = GradientRow(top[i]);
-            lines[5] = "";
+                lines[1 + i] = GradientBorderV(GradientRowRaw(StripArtBorder(top[i]), totalW));
+            lines[6] = GradientBorderV(new string(' ', innerW));
             for (int i = 0; i < 5; i++)
-                lines[6 + i] = GradientRow(bot[i]);
+                lines[7 + i] = GradientBorderV(GradientRowRaw(StripArtBorder(bot[i]), totalW));
+            lines[12] = GradientBorderH('╚', '═', '╝', innerW);
             return lines;
         }
 
-        /// <summary>Decipher animation: characters settle from source to target.</summary>
+        /// <summary>Decipher animation: bordered, characters settle from source to target.</summary>
         private string[] DecipherBlock(string[] srcTop, string[] srcBot,
                                        string[] tgtTop, string[] tgtBot)
         {
             float progress = Mathf.Clamp01(_asciiTimer / AsciiAnim);
-            int w = tgtTop[0].Length;
-            var lines = new string[11];
+            int innerW = StripArtBorder(tgtTop[0]).Length;
+            int totalW = innerW + 2;
+            var lines = new string[13];
 
+            lines[0] = GradientBorderH('╔', '═', '╗', innerW);
             for (int r = 0; r < 5; r++)
-                lines[r] = DecipherRow(srcTop[r], tgtTop[r], progress, r * w);
-            lines[5] = "";
+                lines[1 + r] = GradientBorderV(
+                    DecipherRowRaw(StripArtBorder(srcTop[r]), StripArtBorder(tgtTop[r]),
+                                   progress, r * innerW, totalW));
+            lines[6] = GradientBorderV(new string(' ', innerW));
             for (int r = 0; r < 5; r++)
-                lines[6 + r] = DecipherRow(srcBot[r], tgtBot[r], progress, (5 + r) * w);
+                lines[7 + r] = GradientBorderV(
+                    DecipherRowRaw(StripArtBorder(srcBot[r]), StripArtBorder(tgtBot[r]),
+                                   progress, (5 + r) * innerW, totalW));
+            lines[12] = GradientBorderH('╚', '═', '╝', innerW);
             return lines;
         }
 
-        /// <summary>Build one row of the decipher animation with per-char gradient reveal.</summary>
-        private string DecipherRow(string src, string tgt, float progress,
-                                   int threshOffset)
+        /// <summary>Build one decipher row: raw colored content (no Mono/borders).</summary>
+        private string DecipherRowRaw(string src, string tgt, float progress,
+                                      int threshOffset, int totalBorderedWidth)
         {
             int len = tgt.Length;
             var sb = new StringBuilder(len * 32);
 
             for (int i = 0; i < len; i++)
             {
-                float t = len > 1 ? (float)i / (len - 1) : 0f;
+                float t = totalBorderedWidth > 1 ? (float)(i + 1) / (totalBorderedWidth - 1) : 0f;
                 char srcCh = i < src.Length ? src[i] : ' ';
                 char tgtCh = tgt[i];
 
-                // Unchanged characters stay static — no glitch
                 if (srcCh == tgtCh)
                 {
                     sb.Append(TUIColors.Fg(GradientAt(t), tgtCh.ToString()));
@@ -546,14 +589,13 @@ namespace Pong.UI
                     ch = hasContent ? GlitchGlyphs[Random.Range(0, GlitchGlyphs.Length)] : ' ';
                 }
 
-                // Unsettled chars shift the gradient toward yellow
                 Color32 color = isSettled
                     ? GradientAt(t)
                     : Color32.Lerp(TUIColors.BrightYellow, GradientAt(t), progress);
                 sb.Append(TUIColors.Fg(color, ch.ToString()));
             }
 
-            return Mono(sb.ToString());
+            return sb.ToString();
         }
 
         // ── RIGHT COLUMN: Settings / Controls ───────────────────

@@ -60,5 +60,15 @@ namespace Pong.Game
         {
             targetY = y;
         }
+
+        /// <summary>Reset paddle to center position.</summary>
+        public void ResetPosition()
+        {
+            currentY = 0f;
+            targetY = 0f;
+            var pos = transform.position;
+            pos.y = 0f;
+            transform.position = pos;
+        }
     }
 }

@@ -1,9 +1,11 @@
 // Copyright CodeGamified 2025-2026
 // MIT License — Pong: Hello World
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using CodeGamified.Procedural;
 using CodeGamified.Quality;
-using System.Collections.Generic;
+using CodeGamified.Time;
 
 namespace Pong.Game
 {
@@ -31,6 +33,11 @@ namespace Pong.Game
         private Color _currentLineColor;
         private Material _lineMaterial;
         private static readonly Color GoldHDR = new Color(2f, 1.6f, 0.2f);
+
+        // Fade-out state (line mode)
+        private Coroutine _fadeCoroutine;
+        private const float FADE_DURATION = 0.4f;
+        private const float FADE_SPEED_THRESHOLD = 10f;
 
         // Shared
         private float _nextSpawnTime;
@@ -245,13 +252,62 @@ namespace Pong.Game
             StartNewSegment(hdrColor);
         }
 
-        /// <summary>Clear the persistent line trail (call on match reset).</summary>
+        /// <summary>Clear the persistent line trail (call on match reset).
+        /// At low time scales (&lt;10×) fades out over FADE_DURATION; otherwise instant.</summary>
         public void ClearLine()
         {
+            float scale = SimulationTime.Instance != null ? SimulationTime.Instance.timeScale : 1f;
+            if (scale < FADE_SPEED_THRESHOLD && _lineMode && _lineSegments != null && _lineSegments.Count > 0)
+            {
+                // Fade then clear
+                if (_fadeCoroutine != null) StopCoroutine(_fadeCoroutine);
+                _fadeCoroutine = StartCoroutine(FadeAndClear());
+            }
+            else
+            {
+                ClearLineImmediate();
+            }
+        }
+
+        private void ClearLineImmediate()
+        {
+            if (_fadeCoroutine != null) { StopCoroutine(_fadeCoroutine); _fadeCoroutine = null; }
             ClearLineSegments();
             _currentLineColor = GoldHDR;
             if (_lineMode)
                 StartNewSegment(GoldHDR);
+        }
+
+        private IEnumerator FadeAndClear()
+        {
+            // Snapshot the segments to fade — new segment starts immediately for the next rally
+            var fadingLRs = new List<LineRenderer>(_lineSegments);
+            _lineSegments.Clear();
+            _segmentPoints.Clear();
+            _currentLineColor = GoldHDR;
+            StartNewSegment(GoldHDR);
+
+            float elapsed = 0f;
+            while (elapsed < FADE_DURATION)
+            {
+                elapsed += Time.deltaTime;
+                float alpha = Mathf.Lerp(1f, 0f, elapsed / FADE_DURATION);
+                for (int i = 0; i < fadingLRs.Count; i++)
+                {
+                    if (fadingLRs[i] == null) continue;
+                    var grad = fadingLRs[i].colorGradient;
+                    var alphaKeys = new[] { new GradientAlphaKey(alpha * 0.7f, 0f), new GradientAlphaKey(alpha, 1f) };
+                    grad.alphaKeys = alphaKeys;
+                    fadingLRs[i].colorGradient = grad;
+                }
+                yield return null;
+            }
+
+            for (int i = 0; i < fadingLRs.Count; i++)
+                if (fadingLRs[i] != null)
+                    Destroy(fadingLRs[i].gameObject);
+
+            _fadeCoroutine = null;
         }
 
         // ── Sphere mode (Low/Med/High) ───────────────────────────

@@ -2,6 +2,7 @@
 // MIT License — Pong: Hello World
 using UnityEngine;
 using CodeGamified.Time;
+using Pong.Scripting;
 
 namespace Pong.Game
 {
@@ -62,6 +63,7 @@ namespace Pong.Game
             LeftScore = 0;
             RightScore = 0;
             MatchInProgress = true;
+            ResetPaddles();
             OnMatchStarted?.Invoke();
             ServeAfterDelay(PaddleSide.Right); // First serve toward AI
         }
@@ -93,6 +95,9 @@ namespace Pong.Game
 
             OnPointScored?.Invoke(scorer, LeftScore, RightScore);
 
+            // Reset paddles to center and restart their scripts
+            ResetPaddles();
+
             // Check for win
             if (LeftScore >= _pointsToWin)
             {
@@ -121,6 +126,16 @@ namespace Pong.Game
 
             if (_autoRestart)
                 StartCoroutine(RestartAfterDelay());
+        }
+
+        private void ResetPaddles()
+        {
+            _leftPaddle.ResetPosition();
+            _rightPaddle.ResetPosition();
+
+            // Reset code execution state for all PaddlePrograms
+            foreach (var prog in FindObjectsByType<PaddleProgram>(FindObjectsSortMode.None))
+                prog.ResetExecution();
         }
 
         private void ServeAfterDelay(PaddleSide toward)

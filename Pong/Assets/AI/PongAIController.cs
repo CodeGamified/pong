@@ -66,7 +66,7 @@ namespace Pong.AI
             {
                 case AIDifficulty.Easy:
                     return @"# EASY — ""The Tracker"" (~8 ops)
-# ~1.25 passes/sec at 10 ops/s
+# ~2.5 passes/sec at 20 ops/s
 ball_y = get_ball_y()
 set_target_y(ball_y)";
 

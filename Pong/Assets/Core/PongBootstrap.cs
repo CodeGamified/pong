@@ -35,7 +35,7 @@ namespace Pong.Core
     ///
     /// Attach to a GameObject. Press Play → Pong appears.
     /// </summary>
-    public class PongBootstrap : GameBootstrap
+    public class PongBootstrap : GameBootstrap, IQualityResponsive
     {
         protected override string LogTag => "PONG";
 
@@ -158,6 +158,10 @@ namespace Pong.Core
         private Color _ballLightColorTarget;
         private const float BallLightBaseIntensity = 0.4f;
         private const float BallLightDecay = 6f;
+
+        // Bloom / post-processing
+        private Bloom _bloom;
+        private Volume _postProcessVolume;
 
         // Camera (from .engine Camera)
         private CameraAmbientMotion _cameraSway;
@@ -463,6 +467,7 @@ namespace Pong.Core
 
             SettingsBridge.Load();
             QualityBridge.SetTier((QualityTier)SettingsBridge.QualityLevel);
+            QualityBridge.Register(this);
             Log($"Settings loaded (Quality={SettingsBridge.QualityLevel}, Font={SettingsBridge.FontSize}pt)");
 
             SetupSimulationTime();
@@ -528,18 +533,18 @@ namespace Pong.Core
             camData.renderPostProcessing = true;
 
             var volumeGO = new GameObject("PostProcessVolume");
-            var volume = volumeGO.AddComponent<Volume>();
-            volume.isGlobal = true;
-            volume.priority = 1;
+            _postProcessVolume = volumeGO.AddComponent<Volume>();
+            _postProcessVolume.isGlobal = true;
+            _postProcessVolume.priority = 1;
             var profile = ScriptableObject.CreateInstance<VolumeProfile>();
-            var bloom = profile.Add<Bloom>();
-            bloom.threshold.overrideState = true;
-            bloom.threshold.value = 0.9f;
-            bloom.intensity.overrideState = true;
-            bloom.intensity.value = 2.5f;
-            bloom.scatter.overrideState = true;
-            bloom.scatter.value = 0.7f;
-            volume.profile = profile;
+            _bloom = profile.Add<Bloom>();
+            _bloom.threshold.overrideState = true;
+            _bloom.threshold.value = 0.9f;
+            _bloom.intensity.overrideState = true;
+            _bloom.intensity.value = 2.5f;
+            _bloom.scatter.overrideState = true;
+            _bloom.scatter.value = 0.7f;
+            _postProcessVolume.profile = profile;
 
             Log($"Camera: perspective, FOV=60, 3D view + click-to-follow + sway + bloom");
         }
@@ -868,9 +873,9 @@ namespace Pong.Core
 
                     // Ball respawn glow — reset to gold
                     _ballSideColor = BallBaseColor;
-                    _ballVisual.VisualState?.Pulse("body", new Color(4f, 4f, 2f), 0.4f);
-                    FlashBallLight(3f, new Color(1f, 1f, 0.5f));
-                    FlashBallColor(new Color(2f, 1.6f, 0.2f)); // gold flash
+                    _ballVisual.VisualState?.Pulse("body", new Color(2f, 2f, 1f), 0.4f);
+                    FlashBallLight(1.5f, new Color(1f, 1f, 0.5f));
+                    FlashBallColor(new Color(1f, 0.8f, 0.1f)); // gold flash
                 };
             }
 
@@ -883,28 +888,28 @@ namespace Pong.Core
                         ? new Color(0f, 1f, 1f)   // cyan
                         : new Color(1f, 0.2f, 0.8f); // magenta
                     Color sideHDR = side == PaddleSide.Left
-                        ? new Color(0f, 3f, 3f)
-                        : new Color(3f, 0.8f, 2.2f);
+                        ? new Color(0f, 1.5f, 1.5f)
+                        : new Color(1.5f, 0.4f, 1.1f);
                     Color sideTrailHDR = side == PaddleSide.Left
-                        ? new Color(0f, 2f, 2f)
-                        : new Color(2f, 0f, 2f);
+                        ? new Color(0f, 1f, 1f)
+                        : new Color(1f, 0f, 1f);
 
                     _ballSideColor = sideColor;
 
                     if (side == PaddleSide.Left && _leftPaddleVisual.VisualState != null)
                     {
-                        _leftPaddleVisual.VisualState.Pulse("body", new Color(0f, 0.5f, 0.5f), 0.15f);
-                        FlashRendererColor(_leftPaddleVisual, "body", new Color(0f, 1.5f, 1.5f));
+                        _leftPaddleVisual.VisualState.Pulse("body", new Color(0f, 0.25f, 0.25f), 0.15f);
+                        FlashRendererColor(_leftPaddleVisual, "body", new Color(0f, 0.75f, 0.75f));
                     }
                     else if (side == PaddleSide.Right && _rightPaddleVisual.VisualState != null)
                     {
-                        _rightPaddleVisual.VisualState.Pulse("body", new Color(0.5f, 0.1f, 0.4f), 0.15f);
-                        FlashRendererColor(_rightPaddleVisual, "body", new Color(1.5f, 0.4f, 1.1f));
+                        _rightPaddleVisual.VisualState.Pulse("body", new Color(0.25f, 0.05f, 0.2f), 0.15f);
+                        FlashRendererColor(_rightPaddleVisual, "body", new Color(0.75f, 0.2f, 0.55f));
                     }
 
                     // Ball assumes the color of the paddle that hit it
-                    _ballVisual.VisualState?.Pulse("body", new Color(5f, 5f, 5f), 0.3f);
-                    FlashBallLight(5f, sideColor);
+                    _ballVisual.VisualState?.Pulse("body", new Color(2.5f, 2.5f, 2.5f), 0.3f);
+                    FlashBallLight(2.5f, sideColor);
                     FlashBallColor(sideHDR);
                     _ballTrail?.SetSideColor(sideTrailHDR);
 
@@ -921,12 +926,12 @@ namespace Pong.Core
 
                     courtVS?.Pulse(wallId, Color.white, 0.1f);
                     if (courtVisual != null)
-                        FlashRendererColor(courtVisual.Value, wallId, new Color(1.5f, 1.5f, 1.5f));
+                        FlashRendererColor(courtVisual.Value, wallId, new Color(0.75f, 0.75f, 0.75f));
 
                     // Ball reacts to wall hit — bright flash, decays back to side color
-                    _ballVisual.VisualState?.Pulse("body", new Color(3f, 3f, 3f), 0.2f);
-                    FlashBallLight(3f, _ballSideColor != default ? _ballSideColor : Color.white);
-                    FlashBallColor(new Color(2.5f, 2.5f, 2.5f));
+                    _ballVisual.VisualState?.Pulse("body", new Color(1.5f, 1.5f, 1.5f), 0.2f);
+                    FlashBallLight(1.5f, _ballSideColor != default ? _ballSideColor : Color.white);
+                    FlashBallColor(new Color(1.25f, 1.25f, 1.25f));
 
                     _audioProvider?.PlayWallBounce();
                     _hapticProvider?.TapLight();
@@ -938,24 +943,24 @@ namespace Pong.Core
                     _hapticProvider?.TapHeavy();
 
                     // Ball flash on score — glow only, no scale
-                    _ballVisual.VisualState?.Pulse("body", new Color(8f, 8f, 0f), 0.5f);
-                    FlashBallLight(8f, Color.yellow);
-                    FlashBallColor(new Color(4f, 4f, 0f));
+                    _ballVisual.VisualState?.Pulse("body", new Color(4f, 4f, 0f), 0.5f);
+                    FlashBallLight(4f, Color.yellow);
+                    FlashBallColor(new Color(2f, 2f, 0f));
 
                     // Flash the scoring paddle + goal zone
                     if (scorer == PaddleSide.Left)
                     {
-                        _leftPaddleVisual.VisualState?.Pulse("body", new Color(0f, 3f, 3f), 0.4f);
-                        _leftGoalVisual.VisualState?.Pulse("zone", new Color(0f, 4f, 4f), 0.5f);
-                        FlashRendererColor(_leftPaddleVisual, "body", new Color(0f, 2f, 2f));
-                        FlashRendererColor(_leftGoalVisual, "zone", new Color(0f, 2.5f, 2.5f));
+                        _leftPaddleVisual.VisualState?.Pulse("body", new Color(0f, 1.5f, 1.5f), 0.4f);
+                        _leftGoalVisual.VisualState?.Pulse("zone", new Color(0f, 2f, 2f), 0.5f);
+                        FlashRendererColor(_leftPaddleVisual, "body", new Color(0f, 1f, 1f));
+                        FlashRendererColor(_leftGoalVisual, "zone", new Color(0f, 1.25f, 1.25f));
                     }
                     else
                     {
-                        _rightPaddleVisual.VisualState?.Pulse("body", new Color(3f, 0.6f, 2.4f), 0.4f);
-                        _rightGoalVisual.VisualState?.Pulse("zone", new Color(4f, 0.8f, 3.2f), 0.5f);
-                        FlashRendererColor(_rightPaddleVisual, "body", new Color(2f, 0.4f, 1.5f));
-                        FlashRendererColor(_rightGoalVisual, "zone", new Color(2.5f, 0.5f, 2f));
+                        _rightPaddleVisual.VisualState?.Pulse("body", new Color(1.5f, 0.3f, 1.2f), 0.4f);
+                        _rightGoalVisual.VisualState?.Pulse("zone", new Color(2f, 0.4f, 1.6f), 0.5f);
+                        FlashRendererColor(_rightPaddleVisual, "body", new Color(1f, 0.2f, 0.75f));
+                        FlashRendererColor(_rightGoalVisual, "zone", new Color(1.25f, 0.25f, 1f));
                     }
                 };
             }
@@ -965,7 +970,7 @@ namespace Pong.Core
             {
                 _ballVisual.VisualState.Bind("body",
                     () => _ball.CurrentSpeed / ballMaxSpeed,
-                    VisualChannel.Emission, 0f, 0.15f);
+                    VisualChannel.Emission, 0f, 0.075f);
             }
 
             // ── Audio: engine instruction step sounds ──
@@ -1033,10 +1038,54 @@ namespace Pong.Core
 
         private void OnDestroy()
         {
+            QualityBridge.Unregister(this);
             if (SimulationTime.Instance != null)
             {
                 SimulationTime.Instance.OnTimeScaleChanged -= s => { };
                 SimulationTime.Instance.OnPausedChanged -= p => { };
+            }
+        }
+
+        // =================================================================
+        // QUALITY
+        // =================================================================
+
+        public void OnQualityChanged(QualityTier tier)
+        {
+            bool emissionOn = QualityHints.EmissionEnabled(tier);
+
+            // Toggle bloom
+            if (_bloom != null)
+                _bloom.active = emissionOn;
+
+            // Toggle ball glow light
+            if (_ballLight != null)
+                _ballLight.enabled = emissionOn;
+
+            // Toggle emission keyword on all procedural materials
+            ToggleEmission(_ballVisual, emissionOn);
+            ToggleEmission(_leftPaddleVisual, emissionOn);
+            ToggleEmission(_rightPaddleVisual, emissionOn);
+            ToggleEmission(_leftGoalVisual, emissionOn);
+            ToggleEmission(_rightGoalVisual, emissionOn);
+        }
+
+        private static void ToggleEmission(AssemblyResult visual, bool enabled)
+        {
+            if (visual.Renderers == null) return;
+            foreach (var kvp in visual.Renderers)
+            {
+                var mat = kvp.Value.material;
+                if (!mat.HasProperty("_EmissionColor")) continue;
+                if (enabled)
+                {
+                    mat.EnableKeyword("_EMISSION");
+                }
+                else
+                {
+                    mat.DisableKeyword("_EMISSION");
+                    mat.SetColor("_EmissionColor", Color.black);
+                }
             }
         }
 
