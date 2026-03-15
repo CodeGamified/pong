@@ -88,7 +88,7 @@ namespace Pong.UI
 
                 for (int i = 0; i < diffs.Length; i++)
                 {
-                    int r = 8 + i * 2;
+                    int r = 8 + i;
                     if (r < rows.Count)
                         rows[r].RepositionRightButtonOverlays(new[] { 2 }, new[] { rBtnWidth });
                 }
@@ -114,10 +114,10 @@ namespace Pong.UI
                     new Action<int>[] { _ => ResetPlayerScript() });
             }
 
-            // Right column: AI difficulty buttons on rows 8,10,12,14
+            // Right column: AI difficulty buttons on rows 8,9,10,11
             for (int i = 0; i < diffs.Length; i++)
             {
-                int r = 8 + i * 2; // skip description rows
+                int r = 8 + i;
                 if (r >= rows.Count) break;
                 var diff = diffs[i];
                 rows[r].CreateRightButtonOverlays(
@@ -300,14 +300,28 @@ namespace Pong.UI
 
             lines.Add($" {TUIColors.Fg(TUIColors.BrightMagenta, TUIGlyphs.DiamondFilled)} {TUIColors.Bold("AI OPPONENT")}");
 
-            string aiDiff = _ai != null ? _ai.Difficulty.ToString() : "?";
-            lines.Add($"  Difficulty:");
-            lines.Add($"  {TUIColors.Fg(TUIColors.BrightYellow, aiDiff)}");
-            lines.Add("");
+            if (_ai != null && _ai.Program != null)
+            {
+                string name = _ai.Program.ProgramName ?? "AI";
+                int inst = _ai.Program.Program?.Instructions?.Length ?? 0;
+                string status = _ai.Program.IsRunning
+                    ? TUIColors.Fg(TUIColors.BrightGreen, "RUN")
+                    : TUIColors.Dimmed("STOP");
+                string diff = TUIColors.Fg(TUIColors.BrightMagenta, $"({_ai.Difficulty})");
+                lines.Add($"  {name}");
+                lines.Add($"  {status} {diff}");
+                lines.Add($"  {TUIColors.Dimmed($"{inst} inst")}");
+            }
+            else
+            {
+                string aiDiff = _ai != null ? _ai.Difficulty.ToString() : "?";
+                lines.Add($"  {TUIColors.Dimmed("AI")}");
+                lines.Add($"  {TUIColors.Fg(TUIColors.BrightYellow, aiDiff)}");
+                lines.Add("");
+            }
 
             lines.Add("");
             var diffs = new[] { AIDifficulty.Easy, AIDifficulty.Medium, AIDifficulty.Hard, AIDifficulty.Expert };
-            var names = new[] { "Tracker", "Anticipator", "Predictor", "Strategist" };
             lines.Add($"  {TUIColors.Dimmed("Set AI:")}");
             for (int i = 0; i < diffs.Length; i++)
             {
@@ -316,9 +330,7 @@ namespace Pong.UI
                 string label = active
                     ? TUIColors.Fg(TUIColors.BrightGreen, $"{diffs[i]}{TUIGlyphs.ArrowL}")
                     : TUIColors.Dimmed($"{diffs[i]}");
-                string desc = TUIColors.Dimmed(names[i]);
                 lines.Add($"  {key} {label}");
-                lines.Add($"   {desc}");
             }
 
             return lines.ToArray();

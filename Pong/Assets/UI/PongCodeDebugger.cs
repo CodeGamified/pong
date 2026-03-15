@@ -6,6 +6,7 @@ using CodeGamified.Engine;
 using CodeGamified.Engine.Runtime;
 using CodeGamified.TUI;
 using Pong.Scripting;
+using static Pong.Scripting.PongOpCode;
 
 namespace Pong.UI
 {
@@ -89,6 +90,25 @@ namespace Pong.UI
             return lines;
         }
 
+        static string FormatPongOp(Instruction inst)
+        {
+            int id = (int)inst.Op - (int)OpCode.CUSTOM_0;
+            return (PongOpCode)id switch
+            {
+                GET_BALL_X    => "INP  R0, BALL.X",
+                GET_BALL_Y    => "INP  R0, BALL.Y",
+                GET_BALL_VX   => "INP  R0, BALL.VX",
+                GET_BALL_VY   => "INP  R0, BALL.VY",
+                GET_PADDLE_Y  => "INP  R0, PAD.Y",
+                GET_PADDLE_X  => "INP  R0, PAD.X",
+                GET_SCORE     => "INP  R0, SCORE",
+                GET_OPP_SCORE => "INP  R0, OPP.SC",
+                GET_OPP_Y     => "INP  R0, OPP.Y",
+                SET_TARGET_Y  => "OUT  TGT.Y, R0",
+                _             => $"IO.{id,2} {inst.Arg0}, {inst.Arg1}"
+            };
+        }
+
         protected override List<string> BuildAsmColumn(int pc)
         {
             var lines = new List<string>();
@@ -104,19 +124,13 @@ namespace Pong.UI
                 int i = ((offset + j) % total + total) % total;
                 var inst = instructions[i];
                 bool isPC = (i == pc);
-                string prefix = " ";
-                string addr = TUIColors.Dimmed($"{i:D4}:");
-
-                string opName = inst.Op.ToString();
-#if UNITY_EDITOR || DEVELOPMENT_BUILD || CODEGAMIFIED_DEBUG
-                string comment = inst.Comment ?? opName;
-#else
-                string comment = opName;
-#endif
+                string ptr = isPC ? TUIColors.Fg(TUIColors.BrightGreen, "►") : " ";
+                string addr = TUIColors.Dimmed($"{i:X3}");
+                string asm = inst.ToAssembly(FormatPongOp);
                 string text = isPC
-                    ? TUIColors.Fg(TUIColors.BrightCyan, comment)
-                    : comment;
-                lines.Add($"{prefix}{addr} {text}");
+                    ? TUIColors.Fg(TUIColors.BrightCyan, asm)
+                    : asm;
+                lines.Add($"{ptr}{addr} {text}");
             }
             return lines;
         }
