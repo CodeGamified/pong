@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using CodeGamified.TUI;
+using CodeGamified.Settings;
 using Pong.Game;
 using Pong.AI;
 using Pong.Scripting;
@@ -11,7 +12,7 @@ using Pong.Scripting;
 namespace Pong.UI
 {
     /// <summary>
-    /// TUI Manager for Pong — two draggable debugger windows.
+    /// TUI Manager for Pong — two draggable debugger windows + 3-column status bar.
     /// Powered by .engine's CodeDebuggerWindow + TUIEdgeDragger.
     ///
     /// Layout (all edges draggable):
@@ -19,11 +20,13 @@ namespace Pong.UI
     ///   │ YOUR CODE           │ AI CODE             │
     ///   │ PY │ MACHINE │ REGS │ PY │ MACHINE │ INFO │
     ///   │    │         │      │    │         │      │
-    ///   ├─────────────────────┴─────────────────────┤
-    ///   │ STATUS BAR: score, time, rank, controls   │
-    ///   └───────────────────────────────────────────-┘
+    ///   ├──────────┬──────────┬──────────────────────┤
+    ///   │ SCRIPTS  │ ██ PONG  │ CONTROLS            │
+    ///   │ YOU / AI │  5 — 3   │ [1-4] AI difficulty  │
+    ///   │          │ W:3 L:1  │ [SPACE] pause ...    │
+    ///   └──────────┴──────────┴──────────────────────┘
     /// </summary>
-    public class PongTUIManager : MonoBehaviour
+    public class PongTUIManager : MonoBehaviour, ISettingsListener
     {
         // Dependencies
         private PongMatchManager _match;
@@ -47,7 +50,7 @@ namespace Pong.UI
 
         // Font
         private TMP_FontAsset _font;
-        private const float FONT_SIZE = 13f;
+        private float _fontSize;
 
         public void Initialize(PongMatchManager match, PaddleProgram program,
                                PongLeaderboard leaderboard, PongAIController ai)
@@ -56,8 +59,34 @@ namespace Pong.UI
             _playerProgram = program;
             _leaderboard = leaderboard;
             _ai = ai;
+            _fontSize = SettingsBridge.FontSize;
 
             BuildCanvas();
+            BuildPanels();
+        }
+
+        private void OnEnable()  => SettingsBridge.Register(this);
+        private void OnDisable() => SettingsBridge.Unregister(this);
+
+        public void OnSettingsChanged(SettingsSnapshot settings, SettingsCategory changed)
+        {
+            if (changed != SettingsCategory.Display) return;
+            if (Mathf.Approximately(settings.FontSize, _fontSize)) return;
+
+            _fontSize = settings.FontSize;
+            RebuildPanels();
+        }
+
+        private void RebuildPanels()
+        {
+            // Destroy existing panels and rebuild with new font size
+            if (_leftPanelRect != null) Destroy(_leftPanelRect.gameObject);
+            if (_rightPanelRect != null) Destroy(_rightPanelRect.gameObject);
+            if (_statusBarRect != null) Destroy(_statusBarRect.gameObject);
+            _playerDebugger = null;
+            _aiDebugger = null;
+            _statusBar = null;
+
             BuildPanels();
         }
 
@@ -83,7 +112,7 @@ namespace Pong.UI
             _canvasRect = canvasGO.GetComponent<RectTransform>();
 
             // Ensure EventSystem exists
-            if (FindObjectOfType<UnityEngine.EventSystems.EventSystem>() == null)
+            if (FindAnyObjectByType<UnityEngine.EventSystems.EventSystem>() == null)
             {
                 var esGO = new GameObject("EventSystem");
                 esGO.AddComponent<UnityEngine.EventSystems.EventSystem>();
@@ -100,34 +129,34 @@ namespace Pong.UI
             // ── Left panel: Player's code debugger ──
             _leftPanelRect = CreatePanel("PlayerPanel",
                 new Vector2(0f, 0.04f),
-                new Vector2(0.50f, 1f));
+                new Vector2(0.25f, 1f));
 
             _playerDebugger = _leftPanelRect.gameObject.AddComponent<PongCodeDebugger>();
             AddPanelBackground(_leftPanelRect);
-            _playerDebugger.InitializeProgrammatic(GetFont(), FONT_SIZE,
+            _playerDebugger.InitializeProgrammatic(GetFont(), _fontSize,
                 _leftPanelRect.GetComponent<Image>());
             _playerDebugger.SetTitle("YOUR CODE");
             _playerDebugger.Bind(_playerProgram);
 
             // Draggers: right edge + bottom edge
             TUIEdgeDragger.Create(_leftPanelRect, _canvasRect, TUIEdgeDragger.Edge.Right);
-            TUIEdgeDragger.Create(_leftPanelRect, _canvasRect, TUIEdgeDragger.Edge.Bottom);
+            var leftBottom = TUIEdgeDragger.Create(_leftPanelRect, _canvasRect, TUIEdgeDragger.Edge.Bottom);
 
             // ── Right panel: AI code debugger ──
             _rightPanelRect = CreatePanel("AIPanel",
-                new Vector2(0.51f, 0.04f),
+                new Vector2(0.75f, 0.04f),
                 new Vector2(1f, 1f));
 
             _aiDebugger = _rightPanelRect.gameObject.AddComponent<PongCodeDebugger>();
             AddPanelBackground(_rightPanelRect);
-            _aiDebugger.InitializeProgrammatic(GetFont(), FONT_SIZE,
+            _aiDebugger.InitializeProgrammatic(GetFont(), _fontSize,
                 _rightPanelRect.GetComponent<Image>());
             _aiDebugger.SetTitle("AI CODE");
             _aiDebugger.Bind(_ai.Program);
 
-            // Daggers: left edge + bottom edge
+            // Draggers: left edge + bottom edge
             TUIEdgeDragger.Create(_rightPanelRect, _canvasRect, TUIEdgeDragger.Edge.Left);
-            TUIEdgeDragger.Create(_rightPanelRect, _canvasRect, TUIEdgeDragger.Edge.Bottom);
+            var rightBottom = TUIEdgeDragger.Create(_rightPanelRect, _canvasRect, TUIEdgeDragger.Edge.Bottom);
 
             // ── Status bar (bottom 4%) ──
             _statusBarRect = CreatePanel("StatusBar",
@@ -136,12 +165,20 @@ namespace Pong.UI
 
             _statusBar = _statusBarRect.gameObject.AddComponent<PongStatusBar>();
             AddPanelBackground(_statusBarRect);
-            _statusBar.InitializeProgrammatic(GetFont(), FONT_SIZE - 1f,
+            _statusBar.InitializeProgrammatic(GetFont(), _fontSize - 1f,
                 _statusBarRect.GetComponent<Image>());
             _statusBar.Bind(_match, _leaderboard, _ai, _playerProgram);
 
             // Dragger: top edge of status bar
-            TUIEdgeDragger.Create(_statusBarRect, _canvasRect, TUIEdgeDragger.Edge.Top);
+            var statusTop = TUIEdgeDragger.Create(_statusBarRect, _canvasRect, TUIEdgeDragger.Edge.Top);
+
+            // Link edges: status bar top ↔ code panel bottoms
+            statusTop.LinkEdge(_leftPanelRect, TUIEdgeDragger.Edge.Bottom)
+                     .LinkEdge(_rightPanelRect, TUIEdgeDragger.Edge.Bottom);
+            leftBottom.LinkEdge(_statusBarRect, TUIEdgeDragger.Edge.Top)
+                      .LinkEdge(_rightPanelRect, TUIEdgeDragger.Edge.Bottom);
+            rightBottom.LinkEdge(_statusBarRect, TUIEdgeDragger.Edge.Top)
+                       .LinkEdge(_leftPanelRect, TUIEdgeDragger.Edge.Bottom);
         }
 
         // ═══════════════════════════════════════════════════════════════

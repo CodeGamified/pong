@@ -14,11 +14,13 @@ namespace Pong.Game
     {
         private readonly float _width;
         private readonly float _height;
+        private readonly float _dashDensity;
 
-        public PongCourtBlueprint(float width, float height)
+        public PongCourtBlueprint(float width, float height, float dashDensity = 1f)
         {
             _width = width;
             _height = height;
+            _dashDensity = dashDensity;
         }
 
         public string DisplayName => "PongCourt";
@@ -51,8 +53,10 @@ namespace Pong.Game
                 new Vector3(_width + 2f, wallThickness, depth),
                 "wall") { Collider = ColliderMode.Box });
 
-            // Center dashed line
-            int segments = (int)(_height / 0.6f);
+            // Center dashed line (density-modulated)
+            float baseSpacing = 0.6f;
+            float spacing = baseSpacing / Mathf.Max(_dashDensity, 0.1f);
+            int segments = Mathf.Max(1, (int)(_height / spacing));
             for (int i = 0; i < segments; i++)
             {
                 float y = -halfH + i * (_height / segments) + (_height / segments) / 2f;

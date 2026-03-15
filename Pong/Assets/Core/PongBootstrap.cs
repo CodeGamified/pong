@@ -15,6 +15,8 @@ using Pong.Persistence;
 using Pong.Scripting;
 using Pong.AI;
 using Pong.UI;
+using CodeGamified.Settings;
+using CodeGamified.Quality;
 
 namespace Pong.Core
 {
@@ -338,6 +340,10 @@ namespace Pong.Core
         private void Start()
         {
             Log("🏓 Pong Bootstrap starting...");
+
+            SettingsBridge.Load();
+            QualityBridge.SetTier((QualityTier)SettingsBridge.QualityLevel);
+            Log($"Settings loaded (Quality={SettingsBridge.QualityLevel}, Font={SettingsBridge.FontSize}pt)");
 
             SetupSimulationTime();
             SetupCamera();
@@ -705,7 +711,14 @@ namespace Pong.Core
                     }
                 };
 
-                _match.OnServe += () => _audioProvider?.PlayServe();
+                _match.OnServe += () =>
+                {
+                    _audioProvider?.PlayServe();
+
+                    // Ball respawn pulse
+                    _ballVisual.VisualState?.Pulse("body", new Color(1f, 1f, 0.5f), 0.3f);
+                    _ballVisual.VisualState?.Throb("body", 1.4f, 0.25f);
+                };
             }
 
             // ── Procedural visual effects + audio + haptic ──
@@ -717,6 +730,10 @@ namespace Pong.Core
                         _leftPaddleVisual.VisualState.Pulse("body", Color.cyan, 0.15f);
                     else if (side == PaddleSide.Right && _rightPaddleVisual.VisualState != null)
                         _rightPaddleVisual.VisualState.Pulse("body", new Color(1f, 0.2f, 0.8f), 0.15f);
+
+                    // Ball reacts to paddle hit
+                    _ballVisual.VisualState?.Pulse("body", Color.white, 0.12f);
+                    _ballVisual.VisualState?.Throb("body", 1.3f, 0.15f);
 
                     _audioProvider?.PlayPaddleHit();
                     _hapticProvider?.TapMedium();
@@ -731,6 +748,10 @@ namespace Pong.Core
                         courtVS.Pulse("wall_bottom", Color.white, 0.1f);
                     }
 
+                    // Ball reacts to wall hit
+                    _ballVisual.VisualState?.Pulse("body", Color.white, 0.1f);
+                    _ballVisual.VisualState?.Throb("body", 1.2f, 0.12f);
+
                     _audioProvider?.PlayWallBounce();
                     _hapticProvider?.TapLight();
                 };
@@ -740,16 +761,22 @@ namespace Pong.Core
                     _audioProvider?.PlayGoalScored();
                     _hapticProvider?.TapHeavy();
 
+                    // Ball flash on score
+                    _ballVisual.VisualState?.Pulse("body", Color.yellow, 0.3f);
+                    _ballVisual.VisualState?.Throb("body", 1.5f, 0.25f);
+
                     // Flash the scoring paddle + goal zone
                     if (scorer == PaddleSide.Left)
                     {
                         _leftPaddleVisual.VisualState?.Pulse("body", Color.white, 0.3f);
                         _leftGoalVisual.VisualState?.Pulse("zone", Color.cyan, 0.5f);
+                        _leftGoalVisual.VisualState?.Throb("zone", 1.15f, 0.4f);
                     }
                     else
                     {
                         _rightPaddleVisual.VisualState?.Pulse("body", Color.white, 0.3f);
                         _rightGoalVisual.VisualState?.Pulse("zone", new Color(1f, 0.2f, 0.8f), 0.5f);
+                        _rightGoalVisual.VisualState?.Throb("zone", 1.15f, 0.4f);
                     }
                 };
             }
@@ -813,6 +840,7 @@ namespace Pong.Core
             Log($"  Warp         │ ✅ [W] warp 10 matches");
             Log($"  Editor       │ ✅ PongEditorExtension ready");
             Log($"  Camera       │ ✅ Click paddle/ball to follow, [ESC] sway");
+            Log($"  Settings     │ ✅ SettingsBridge (Quality={SettingsBridge.QualityLevel}, Font={SettingsBridge.FontSize}pt)");
             Log("────────────────────────────────────────");
             Log("🏓 Bootstrap complete. Write your paddle code!");
 

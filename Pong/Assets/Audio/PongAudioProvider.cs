@@ -1,6 +1,7 @@
 // Copyright CodeGamified 2025-2026
 // MIT License — Pong: Hello World
 using CodeGamified.Audio;
+using CodeGamified.Settings;
 using UnityEngine;
 
 namespace Pong.Audio
@@ -50,7 +51,7 @@ namespace Pong.Audio
         private void Play(AudioClip clip, float volume = 0.3f)
         {
             if (_source != null && clip != null)
-                _source.PlayOneShot(clip, volume);
+                _source.PlayOneShot(clip, volume * SettingsBridge.SfxVolume);
         }
 
         // ── IAudioProvider: Editor ──

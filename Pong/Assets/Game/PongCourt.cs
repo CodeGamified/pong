@@ -2,14 +2,16 @@
 // MIT License — Pong: Hello World
 using UnityEngine;
 using CodeGamified.Procedural;
+using CodeGamified.Quality;
 
 namespace Pong.Game
 {
     /// <summary>
     /// The Pong court — 3D walls, floor, center line.
     /// Built via ProceduralAssembler from PongCourtBlueprint.
+    /// Rebuilds center-line dash density when quality changes.
     /// </summary>
-    public class PongCourt : MonoBehaviour
+    public class PongCourt : MonoBehaviour, IQualityResponsive
     {
         public float Width { get; set; } = 16f;
         public float Height { get; set; } = 10f;
@@ -19,10 +21,30 @@ namespace Pong.Game
 
         public AssemblyResult Visual { get; private set; }
 
+        private ColorPalette _palette;
+
         public void Initialize(ColorPalette palette)
         {
-            var blueprint = new PongCourtBlueprint(Width, Height);
-            Visual = ProceduralAssembler.BuildWithVisualState(blueprint, palette);
+            _palette = palette;
+            RebuildVisual();
+        }
+
+        private void OnEnable()  => QualityBridge.Register(this);
+        private void OnDisable() => QualityBridge.Unregister(this);
+
+        public void OnQualityChanged(QualityTier tier)
+        {
+            RebuildVisual();
+        }
+
+        private void RebuildVisual()
+        {
+            if (Visual.Root != null)
+                Destroy(Visual.Root);
+
+            float density = QualityHints.CourtDashDensity(QualityBridge.CurrentTier);
+            var blueprint = new PongCourtBlueprint(Width, Height, density);
+            Visual = ProceduralAssembler.BuildWithVisualState(blueprint, _palette);
 
             if (Visual.Root != null)
                 Visual.Root.transform.SetParent(transform, false);

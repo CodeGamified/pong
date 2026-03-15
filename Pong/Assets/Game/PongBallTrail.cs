@@ -2,17 +2,18 @@
 // MIT License — Pong: Hello World
 using UnityEngine;
 using CodeGamified.Procedural;
+using CodeGamified.Quality;
 using System.Collections.Generic;
 
 namespace Pong.Game
 {
     /// <summary>
-    /// Procedural ball trail — ring buffer of small cubes that pulse/fade behind the ball.
-    /// Uses ProceduralAssembler for initial geometry and ProceduralVisualState for fade.
+    /// Procedural ball trail — ring buffer of small spheres that pulse/fade behind the ball.
+    /// Trail length adjusts dynamically via <see cref="IQualityResponsive"/>.
     /// </summary>
-    public class PongBallTrail : MonoBehaviour
+    public class PongBallTrail : MonoBehaviour, IQualityResponsive
     {
-        private const int TRAIL_LENGTH = 12;
+        private int _trailLength;
         private const float TRAIL_INTERVAL = 0.02f;
 
         private Transform[] _trailParts;
@@ -21,19 +22,51 @@ namespace Pong.Game
         private float _nextSpawnTime;
         private PongBall _ball;
         private Material _trailMaterial;
+        private ColorPalette _palette;
 
         public void Initialize(PongBall ball, ColorPalette palette)
         {
             _ball = ball;
-            _trailParts = new Transform[TRAIL_LENGTH];
-            _trailRenderers = new Renderer[TRAIL_LENGTH];
+            _palette = palette;
+            _trailLength = QualityHints.TrailSegments(QualityBridge.CurrentTier);
+            BuildTrail();
+        }
+
+        private void OnEnable()  => QualityBridge.Register(this);
+        private void OnDisable() => QualityBridge.Unregister(this);
+
+        public void OnQualityChanged(QualityTier tier)
+        {
+            int newLength = QualityHints.TrailSegments(tier);
+            if (newLength == _trailLength) return;
+            _trailLength = newLength;
+            RebuildTrail();
+        }
+
+        private void RebuildTrail()
+        {
+            // Destroy old trail parts
+            if (_trailParts != null)
+            {
+                for (int i = 0; i < _trailParts.Length; i++)
+                    if (_trailParts[i] != null)
+                        Destroy(_trailParts[i].gameObject);
+            }
+            _writeIndex = 0;
+            BuildTrail();
+        }
+
+        private void BuildTrail()
+        {
+            _trailParts = new Transform[_trailLength];
+            _trailRenderers = new Renderer[_trailLength];
 
             // Find a shader
             var shader = Shader.Find("Universal Render Pipeline/Lit")
                 ?? Shader.Find("Standard")
                 ?? Shader.Find("Unlit/Color");
 
-            Color trailColor = palette != null ? palette.Resolve("ball_trail") : new Color(1f, 1f, 0.3f, 0.5f);
+            Color trailColor = _palette != null ? _palette.Resolve("ball_trail") : new Color(1f, 1f, 0.3f, 0.5f);
 
             _trailMaterial = new Material(shader);
             if (_trailMaterial.HasProperty("_BaseColor"))
@@ -41,7 +74,7 @@ namespace Pong.Game
             else
                 _trailMaterial.color = trailColor;
 
-            for (int i = 0; i < TRAIL_LENGTH; i++)
+            for (int i = 0; i < _trailLength; i++)
             {
                 var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 go.name = $"Trail_{i}";
@@ -59,7 +92,6 @@ namespace Pong.Game
                 _trailRenderers[i] = r;
             }
         }
-
         private void Update()
         {
             if (_ball == null || !_ball.IsActive)
@@ -91,12 +123,12 @@ namespace Pong.Game
             // Reset alpha
             SetAlpha(_writeIndex, 0.6f);
 
-            _writeIndex = (_writeIndex + 1) % TRAIL_LENGTH;
+            _writeIndex = (_writeIndex + 1) % _trailLength;
         }
 
         private void UpdateFade()
         {
-            for (int i = 0; i < TRAIL_LENGTH; i++)
+            for (int i = 0; i < _trailLength; i++)
             {
                 if (!_trailParts[i].gameObject.activeSelf) continue;
 
@@ -139,7 +171,7 @@ namespace Pong.Game
         private void HideAll()
         {
             if (_trailParts == null) return;
-            for (int i = 0; i < TRAIL_LENGTH; i++)
+            for (int i = 0; i < _trailParts.Length; i++)
                 if (_trailParts[i] != null)
                     _trailParts[i].gameObject.SetActive(false);
         }

@@ -1,5 +1,7 @@
 // Copyright CodeGamified 2025-2026
 // MIT License — Pong: Hello World
+using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 using CodeGamified.TUI;
 using CodeGamified.Time;
@@ -10,9 +12,13 @@ using Pong.Scripting;
 namespace Pong.UI
 {
     /// <summary>
-    /// Pong status bar — TerminalWindow subclass.
-    /// Collapsed: single status row (score, stats, time).
-    /// Expanded (drag up): full menu — AI difficulty, script reset, leaderboard, controls.
+    /// Pong status bar — 3-column TerminalWindow.
+    ///
+    /// Collapsed (2 rows): single triple-column status line.
+    /// Expanded (drag up): full 3-column layout:
+    ///   LEFT:   Script controls (YOU top, AI bottom)
+    ///   CENTER: "PONG" ASCII art + score + match stats
+    ///   RIGHT:  Settings / controls / keybinds
     /// </summary>
     public class PongStatusBar : TerminalWindow
     {
@@ -24,8 +30,59 @@ namespace Pong.UI
         // Track which sample the player loaded (null = custom/default)
         private AIDifficulty? _playerScriptTier;
 
+        // ── ASCII art animation ─────────────────────────────────
+        private float _asciiTimer;
+        private int _asciiPhase; // 0=CODE/GAME, 1=anim→PING/PONG, 2=PING/PONG, 3=anim→CODE/GAME
+        private float[] _revealThresholds;
+        private const float AsciiHold = 5f;
+        private const float AsciiAnim = 1f;
+
+        private static readonly char[] GlitchGlyphs =
+            "░▒▓█▀▄▌▐╬╫╪╩╦╠╣─│┌┐└┘├┤┬┴┼".ToCharArray();
+
+        // ── Whole-word ASCII glyphs (human-editable) ────────────
+        // Each array is 5 rows. All rows within a pair must be the same length.
+        // Edit these directly — no letter bank, no assembly.
+
+        private static readonly string[] CodeRows =
+        {
+            "| █████████  ████████  █████████   █████████|",
+            "|██         ██      ██ ██      ██ ██        |",
+            "|██         ██      ██ ██      ██ ██████████|",
+            "|██         ██      ██ ██      ██ ██        |",
+            "| █████████  ████████  █████████   █████████|",
+        };
+
+        private static readonly string[] GameRows =
+        {
+            "| █████████  ████████   ████████   █████████|",
+            "|██         ██      ██ ██  ██  ██ ██        |",
+            "|██   █████ ██████████ ██  ██  ██ ██████████|",
+            "|██      ██ ██      ██ ██  ██  ██ ██        |",
+            "| █████████ ██      ██ ██  ██  ██  █████████|",
+        };
+
+        private static readonly string[] PingRows =
+        {
+            "|█████████  █████████ ██      ██  █████████|",
+            "|██      ██    ██     ████    ██ ██        |",
+            "|█████████     ██     ██  ██  ██ ██   █████|",
+            "|██            ██     ██    ████ ██      ██|",
+            "|██         █████████ ██      ██  █████████|",
+        };
+
+        private static readonly string[] PongRows =
+        {
+            "|█████████   ████████  ██      ██  █████████|",
+            "|██      ██ ██      ██ ████    ██ ██        |",
+            "|█████████  ██      ██ ██  ██  ██ ██   █████|",
+            "|██         ██      ██ ██    ████ ██      ██|",
+            "|██          ████████  ██      ██  █████████|",
+        };
+
         // Expand detection
         private bool IsExpanded => totalRows > 3;
+        private float _charPx; // cached char advance for <mspace> tag
 
         protected override void Awake()
         {
@@ -47,8 +104,42 @@ namespace Pong.UI
         {
             base.Update();
             if (!rowsReady) return;
+            AdvanceAsciiTimer();
             if (!IsExpanded) return;
             HandleMenuInput();
+        }
+
+        private void AdvanceAsciiTimer()
+        {
+            _asciiTimer += UnityEngine.Time.deltaTime;
+            switch (_asciiPhase)
+            {
+                case 0: // showing CODE/GAME
+                case 2: // showing PING/PONG
+                    if (_asciiTimer >= AsciiHold)
+                    {
+                        _asciiTimer = 0f;
+                        _asciiPhase = (_asciiPhase + 1) % 4;
+                        InitRevealThresholds();
+                    }
+                    break;
+                case 1: // animating → PING/PONG
+                case 3: // animating → CODE/GAME
+                    if (_asciiTimer >= AsciiAnim)
+                    {
+                        _asciiTimer = 0f;
+                        _asciiPhase = (_asciiPhase + 1) % 4;
+                    }
+                    break;
+            }
+        }
+
+        private void InitRevealThresholds()
+        {
+            int totalChars = CodeRows[0].Length * 10; // 43 × 10 rows
+            _revealThresholds = new float[totalChars];
+            for (int i = 0; i < totalChars; i++)
+                _revealThresholds[i] = Random.value;
         }
 
         private void HandleMenuInput()
@@ -76,7 +167,6 @@ namespace Pong.UI
                 else SetAIDifficulty(AIDifficulty.Expert);
             }
 
-            // Reset player script
             if (Input.GetKeyDown(KeyCode.R) && _playerProgram != null)
             {
                 _playerProgram.UploadCode(null);
@@ -109,53 +199,30 @@ namespace Pong.UI
         {
             ClearAllRows();
 
-            // Row 0 — always the status bar (triple-column)
+            // Row 0 — collapsed status (always visible)
             if (rows.Count > 0)
             {
                 rows[0].SetTripleColumnMode(true, 10f);
                 rows[0].SetTripleTexts(
-                    BuildLeftStatus(),
-                    BuildCenterStatus(),
-                    BuildRightStatus());
+                    BuildCollapsedLeft(),
+                    BuildCollapsedCenter(),
+                    BuildCollapsedRight());
             }
 
             if (!IsExpanded) return;
 
-            // Separator under status row
-            int r = 1;
-            SetRow(r++, Separator());
+            // Row 1 — separator
+            SetRow(1, Separator());
 
-            // ── AI DIFFICULTY ──
-            r = RenderSection(r, "AI DIFFICULTY", RenderAIDifficulty);
-
-            // ── YOUR SCRIPT ──
-            r = RenderSection(r, "YOUR SCRIPT", RenderScriptInfo);
-
-            // ── LEADERBOARD ──
-            r = RenderSection(r, "LEADERBOARD", RenderLeaderboard);
-
-            // ── CONTROLS ──
-            r = RenderSection(r, "CONTROLS", RenderControls);
-        }
-
-        private delegate int SectionRenderer(int startRow);
-
-        private int RenderSection(int r, string title, SectionRenderer renderer)
-        {
-            if (r >= totalRows) return r;
-            SetRow(r++, $" {TUIColors.Fg(TUIGradient.Sample(0.3f), TUIGlyphs.DiamondFilled)} {TUIColors.Bold(title)}");
-            if (r >= totalRows) return r;
-            SetRow(r++, $" {Separator(totalChars - 4)}");
-            r = renderer(r);
-            if (r < totalRows) SetRow(r++, ""); // blank spacer
-            return r;
+            // Rows 2+ — three-column expanded layout
+            RenderExpandedLayout();
         }
 
         // ═══════════════════════════════════════════════════════════════
-        // STATUS ROW
+        // COLLAPSED (single row — same as before)
         // ═══════════════════════════════════════════════════════════════
 
-        private string BuildLeftStatus()
+        private string BuildCollapsedLeft()
         {
             if (_match == null) return " PONG";
             string you = TUIColors.Fg(TUIColors.BrightCyan, $"YOU: {_match.LeftScore}");
@@ -164,7 +231,7 @@ namespace Pong.UI
             return $" {you}  {TUIGlyphs.BoxV}  {them}";
         }
 
-        private string BuildCenterStatus()
+        private string BuildCollapsedCenter()
         {
             string stats = "";
             if (_match != null)
@@ -174,7 +241,7 @@ namespace Pong.UI
             return stats;
         }
 
-        private string BuildRightStatus()
+        private string BuildCollapsedRight()
         {
             var sim = SimulationTime.Instance;
             if (sim == null) return "";
@@ -183,118 +250,284 @@ namespace Pong.UI
         }
 
         // ═══════════════════════════════════════════════════════════════
-        // MENU SECTIONS
+        // EXPANDED — 3-column layout
+        //   LEFT:   Your Script / AI Script
+        //   CENTER: PONG ASCII + score + stats
+        //   RIGHT:  Controls / keybinds
         // ═══════════════════════════════════════════════════════════════
 
-        private int RenderAIDifficulty(int r)
+        private void RenderExpandedLayout()
         {
-            var diffs = new[] { AIDifficulty.Easy, AIDifficulty.Medium, AIDifficulty.Hard, AIDifficulty.Expert };
-            var names = new[] { "The Tracker", "The Anticipator", "The Predictor", "The Strategist" };
+            // Triple-column: left-aligned | center-aligned | right-aligned.
+            // ASCII art spacing is preserved by <mspace> tags in Mono().
+            var left = BuildLeftColumn();
+            var center = BuildCenterColumn();
+            var right = BuildRightColumn();
 
-            for (int i = 0; i < diffs.Length && r < totalRows; i++)
+            int maxLines = Mathf.Max(left.Length, Mathf.Max(center.Length, right.Length));
+
+            // Cache char pixel width for <mspace> tag (forces █ and space to same advance)
+            if (rows.Count > 2) _charPx = rows[2].CharWidth;
+
+            for (int i = 0; i < maxLines; i++)
+            {
+                int r = i + 2; // offset past row 0 (status) and row 1 (separator)
+                if (r >= totalRows) break;
+
+                rows[r].SetTripleColumnMode(true, 6f);
+
+                string l = i < left.Length   ? left[i]   : "";
+                string c = i < center.Length ? center[i] : "";
+                string rt = i < right.Length  ? right[i]  : "";
+
+                rows[r].SetTripleTexts(l, c, rt);
+            }
+        }
+
+        // ── LEFT COLUMN: Script controls ────────────────────────
+
+        private string[] BuildLeftColumn()
+        {
+            var lines = new System.Collections.Generic.List<string>();
+
+            // Header
+            lines.Add($" {TUIColors.Fg(TUIColors.BrightCyan, TUIGlyphs.DiamondFilled)} {TUIColors.Bold("YOUR SCRIPT")}");
+
+            if (_playerProgram != null)
+            {
+                string name = _playerProgram.ProgramName ?? "PaddleAI";
+                int inst = _playerProgram.Program?.Instructions?.Length ?? 0;
+                string status = _playerProgram.IsRunning
+                    ? TUIColors.Fg(TUIColors.BrightGreen, "RUN")
+                    : TUIColors.Dimmed("STOP");
+                string tier = _playerScriptTier.HasValue
+                    ? TUIColors.Fg(TUIColors.BrightMagenta, $"({_playerScriptTier.Value})")
+                    : TUIColors.Dimmed("(custom)");
+                lines.Add($"  {name} {status} {tier}");
+                lines.Add($"  {TUIColors.Dimmed($"{inst} instructions")}");
+            }
+            else
+            {
+                lines.Add(TUIColors.Dimmed("  No program"));
+            }
+
+            // Sample loader
+            var diffs = new[] { AIDifficulty.Easy, AIDifficulty.Medium, AIDifficulty.Hard, AIDifficulty.Expert };
+            lines.Add($"  {TUIColors.Dimmed("Load sample:")}");
+            for (int i = 0; i < diffs.Length; i++)
+            {
+                bool active = _playerScriptTier.HasValue && _playerScriptTier.Value == diffs[i];
+                string key = TUIColors.Fg(TUIColors.BrightCyan, $"[S+{i + 1}]");
+                string label = active
+                    ? TUIColors.Fg(TUIColors.BrightGreen, $"{diffs[i]}{TUIGlyphs.ArrowL}")
+                    : TUIColors.Dimmed($"{diffs[i]}");
+                lines.Add($"  {key} {label}");
+            }
+
+            lines.Add("");
+
+            // AI section
+            lines.Add($" {TUIColors.Fg(TUIColors.BrightMagenta, TUIGlyphs.DiamondFilled)} {TUIColors.Bold("AI OPPONENT")}");
+            string aiDiff = _ai != null ? _ai.Difficulty.ToString() : "?";
+            lines.Add($"  Difficulty: {TUIColors.Fg(TUIColors.BrightYellow, aiDiff)}");
+
+            lines.Add($"  {TUIColors.Dimmed("Set AI:")}");
+            var names = new[] { "Tracker", "Anticipator", "Predictor", "Strategist" };
+            for (int i = 0; i < diffs.Length; i++)
             {
                 bool active = _ai != null && _ai.Difficulty == diffs[i];
                 string key = TUIColors.Fg(TUIColors.BrightCyan, $"[{i + 1}]");
                 string label = active
-                    ? TUIColors.Fg(TUIColors.BrightGreen, $"{diffs[i],-8} {TUIGlyphs.ArrowL}")
-                    : TUIColors.Dimmed($"{diffs[i],-8}  ");
+                    ? TUIColors.Fg(TUIColors.BrightGreen, $"{diffs[i]}{TUIGlyphs.ArrowL}")
+                    : TUIColors.Dimmed($"{diffs[i]}");
                 string desc = TUIColors.Dimmed(names[i]);
-                SetRow(r++, $"   {key} {label} {desc}");
+                lines.Add($"  {key} {label} {desc}");
             }
-            return r;
+
+            return lines.ToArray();
         }
 
-        private int RenderScriptInfo(int r)
+        // ── CENTER COLUMN: ASCII art + score + stats ────────────
+
+        private string[] BuildCenterColumn()
         {
-            if (_playerProgram == null)
+            var lines = new List<string>();
+
+            // Animated ASCII art (5 rows top word + blank + 5 rows bottom word)
+            lines.AddRange(BuildAsciiArt());
+            lines.Add("");
+
+            // Score
+            if (_match != null)
             {
-                if (r < totalRows) SetRow(r++, TUIColors.Dimmed("   No player program"));
-                return r;
+                string you = TUIColors.Fg(TUIColors.BrightCyan, $"{_match.LeftScore}");
+                string them = TUIColors.Fg(TUIColors.BrightMagenta, $"{_match.RightScore}");
+                lines.Add($"    {you}  {TUIGlyphs.BoxH}{TUIGlyphs.BoxH}  {them}");
+                lines.Add($"   {TUIColors.Fg(TUIColors.BrightCyan, "YOU")}    {TUIColors.Fg(TUIColors.BrightMagenta, "AI")}");
+                lines.Add("");
+                lines.Add($"  Matches: {_match.MatchesPlayed}");
+                lines.Add($"  {TUIColors.Fg(TUIColors.BrightGreen, $"W:{_match.PlayerWins}")}  {TUIColors.Fg(TUIColors.BrightMagenta, $"L:{_match.AIWins}")}");
             }
 
-            string name = _playerProgram.ProgramName ?? "PaddleAI";
-            int instCount = _playerProgram.Program?.Instructions?.Length ?? 0;
-            string status = _playerProgram.IsRunning
-                ? TUIColors.Fg(TUIColors.BrightGreen, "RUNNING")
-                : TUIColors.Dimmed("STOPPED");
-            string tier = _playerScriptTier.HasValue
-                ? TUIColors.Fg(TUIColors.BrightMagenta, $"({_playerScriptTier.Value} sample)")
-                : TUIColors.Dimmed("(custom)");
-
-            if (r < totalRows)
-                SetRow(r++, $"   {TUIColors.Dimmed("Program:")} {name}  {status}  {tier}");
-            if (r < totalRows)
-                SetRow(r++, $"   {TUIColors.Dimmed("Instructions:")} {instCount}");
-
-            // Load sample scripts
-            var diffs = new[] { AIDifficulty.Easy, AIDifficulty.Medium, AIDifficulty.Hard, AIDifficulty.Expert };
-            var names = new[] { "The Tracker", "The Anticipator", "The Predictor", "The Strategist" };
-            for (int i = 0; i < diffs.Length && r < totalRows; i++)
+            // Leaderboard rank
+            if (_leaderboard != null)
             {
-                bool active = _playerScriptTier.HasValue && _playerScriptTier.Value == diffs[i];
-                string key = TUIColors.Fg(TUIColors.BrightCyan, $"[Shift+{i + 1}]");
-                string label = active
-                    ? TUIColors.Fg(TUIColors.BrightGreen, $"{diffs[i],-8} {TUIGlyphs.ArrowL}")
-                    : TUIColors.Dimmed($"{diffs[i],-8}  ");
-                string desc = TUIColors.Dimmed(names[i]);
-                SetRow(r++, $"   {key} {label} {desc}");
+                lines.Add("");
+                lines.Add($"  Rank: {TUIColors.Fg(TUIColors.BrightGreen, _leaderboard.CurrentRank)}");
+                lines.Add($"  Total: {_leaderboard.TotalMatches}");
+
+                var diffs = new[] { AIDifficulty.Easy, AIDifficulty.Medium, AIDifficulty.Hard, AIDifficulty.Expert };
+                foreach (var diff in diffs)
+                {
+                    if (!_leaderboard.Records.ContainsKey(diff)) continue;
+                    var rec = _leaderboard.Records[diff];
+                    string check = rec.Wins >= 3
+                        ? TUIColors.Fg(TUIColors.BrightGreen, TUIGlyphs.Check)
+                        : TUIColors.Dimmed(" ");
+                    string wr = (rec.Wins + rec.Losses) > 0 ? $"{rec.WinRate:P0}" : "---";
+                    lines.Add($"  {check} {diff,-7} {rec.Wins}W/{rec.Losses}L {TUIColors.Dimmed(wr)}");
+                }
             }
 
-            if (r < totalRows)
-            {
-                string key = TUIColors.Fg(TUIColors.BrightCyan, "[R]");
-                SetRow(r++, $"   {key}         Reset to starter code");
-            }
-            return r;
+            return lines.ToArray();
         }
 
-        private int RenderLeaderboard(int r)
+        // ── ASCII ART ENGINE ────────────────────────────────────
+
+        /// <summary>Build 11 lines: 5 top-word rows + blank + 5 bottom-word rows.</summary>
+        private string[] BuildAsciiArt()
         {
-            if (_leaderboard == null)
+            switch (_asciiPhase)
             {
-                if (r < totalRows) SetRow(r++, TUIColors.Dimmed("   No leaderboard"));
-                return r;
+                case 0: return ColorizeBlock(CodeRows, GameRows);
+                case 2: return ColorizeBlock(PingRows, PongRows);
+                case 1: return DecipherBlock(CodeRows, GameRows, PingRows, PongRows);
+                case 3: return DecipherBlock(PingRows, PongRows, CodeRows, GameRows);
+                default: return new string[11];
             }
-
-            if (r < totalRows)
-                SetRow(r++, $"   {TUIColors.Dimmed("Rank:")} {TUIColors.Fg(TUIColors.BrightGreen, _leaderboard.CurrentRank)}  {TUIColors.Dimmed("Matches:")} {_leaderboard.TotalMatches}");
-
-            var diffs = new[] { AIDifficulty.Easy, AIDifficulty.Medium, AIDifficulty.Hard, AIDifficulty.Expert };
-            foreach (var diff in diffs)
-            {
-                if (r >= totalRows) break;
-                if (!_leaderboard.Records.ContainsKey(diff)) continue;
-                var rec = _leaderboard.Records[diff];
-                string check = rec.Wins >= 3
-                    ? TUIColors.Fg(TUIColors.BrightGreen, TUIGlyphs.Check)
-                    : TUIColors.Dimmed(" ");
-                string winRate = (rec.Wins + rec.Losses) > 0
-                    ? $"{rec.WinRate:P0}"
-                    : "---";
-                SetRow(r++, $"   {check} {diff,-8} {rec.Wins}W {rec.Losses}L  {TUIColors.Dimmed(winRate)}");
-            }
-            return r;
         }
 
-        private int RenderControls(int r)
+        /// <summary>Wrap text in mspace tag to force uniform char advance.</summary>
+        private string Mono(string text)
+            => _charPx > 0 ? $"<mspace={_charPx:F1}px>{text}</mspace>" : text;
+
+        /// <summary>Lerp a Color32 by column position for horizontal gradient.</summary>
+        private static Color32 GradientAt(float t)
         {
-            string[] controls = new[]
+            // Accent1 (cyan) → Accent2 (magenta)
+            byte r = (byte)Mathf.Lerp(TUIColors.BrightCyan.r, TUIColors.BrightMagenta.r, t);
+            byte g = (byte)Mathf.Lerp(TUIColors.BrightCyan.g, TUIColors.BrightMagenta.g, t);
+            byte b = (byte)Mathf.Lerp(TUIColors.BrightCyan.b, TUIColors.BrightMagenta.b, t);
+            return new Color32(r, g, b, 255);
+        }
+
+        /// <summary>Apply per-character horizontal gradient to a row string.</summary>
+        private string GradientRow(string row)
+        {
+            int len = row.Length;
+            if (len == 0) return "";
+            var sb = new StringBuilder(len * 32);
+            for (int i = 0; i < len; i++)
             {
-                $"   {TUIColors.Fg(TUIColors.BrightCyan, "[1-4]")}       Change AI difficulty",
-                $"   {TUIColors.Fg(TUIColors.BrightCyan, "[Shift+1-4]")} Load sample into YOUR code",
-                $"   {TUIColors.Fg(TUIColors.BrightCyan, "[R]")}         Reset your code",
-                $"   {TUIColors.Fg(TUIColors.BrightCyan, "[+/-]")}       Time scale",
-                $"   {TUIColors.Fg(TUIColors.BrightCyan, "[SPACE]")}     Pause / Resume",
-                $"   {TUIColors.Fg(TUIColors.BrightCyan, "[W]")}         Warp forward 10 matches",
-                $"   {TUIColors.Fg(TUIColors.BrightCyan, "[ESC]")}       Cancel warp / reset camera",
-                $"   {TUIColors.Fg(TUIColors.BrightCyan, "[Click]")}     Click paddle or ball to follow",
-                $"   {TUIColors.Fg(TUIColors.BrightCyan, $"[{TUIGlyphs.ArrowU}/{TUIGlyphs.ArrowD}]")}       Scroll code windows",
+                float t = len > 1 ? (float)i / (len - 1) : 0f;
+                sb.Append(TUIColors.Fg(GradientAt(t), row[i].ToString()));
+            }
+            return Mono(sb.ToString());
+        }
+
+        /// <summary>Static display: both words use horizontal gradient.</summary>
+        private string[] ColorizeBlock(string[] top, string[] bot)
+        {
+            var lines = new string[11];
+            for (int i = 0; i < 5; i++)
+                lines[i] = GradientRow(top[i]);
+            lines[5] = "";
+            for (int i = 0; i < 5; i++)
+                lines[6 + i] = GradientRow(bot[i]);
+            return lines;
+        }
+
+        /// <summary>Decipher animation: characters settle from source to target.</summary>
+        private string[] DecipherBlock(string[] srcTop, string[] srcBot,
+                                       string[] tgtTop, string[] tgtBot)
+        {
+            float progress = Mathf.Clamp01(_asciiTimer / AsciiAnim);
+            int w = tgtTop[0].Length;
+            var lines = new string[11];
+
+            for (int r = 0; r < 5; r++)
+                lines[r] = DecipherRow(srcTop[r], tgtTop[r], progress, r * w);
+            lines[5] = "";
+            for (int r = 0; r < 5; r++)
+                lines[6 + r] = DecipherRow(srcBot[r], tgtBot[r], progress, (5 + r) * w);
+            return lines;
+        }
+
+        /// <summary>Build one row of the decipher animation with per-char gradient reveal.</summary>
+        private string DecipherRow(string src, string tgt, float progress,
+                                   int threshOffset)
+        {
+            int len = tgt.Length;
+            var sb = new StringBuilder(len * 32);
+
+            for (int i = 0; i < len; i++)
+            {
+                int idx = threshOffset + i;
+                bool isSettled = _revealThresholds != null
+                    && idx < _revealThresholds.Length
+                    && progress >= _revealThresholds[idx];
+
+                float t = len > 1 ? (float)i / (len - 1) : 0f;
+                char ch;
+
+                if (isSettled)
+                {
+                    ch = tgt[i];
+                }
+                else
+                {
+                    bool hasContent = (i < src.Length && src[i] != ' ') || tgt[i] != ' ';
+                    ch = hasContent ? GlitchGlyphs[Random.Range(0, GlitchGlyphs.Length)] : ' ';
+                }
+
+                // Unsettled chars shift the gradient toward yellow
+                Color32 color = isSettled
+                    ? GradientAt(t)
+                    : Color32.Lerp(TUIColors.BrightYellow, GradientAt(t), progress);
+                sb.Append(TUIColors.Fg(color, ch.ToString()));
+            }
+
+            return Mono(sb.ToString());
+        }
+
+        // ── RIGHT COLUMN: Settings / Controls ───────────────────
+
+        private string[] BuildRightColumn()
+        {
+            var sim = SimulationTime.Instance;
+            string speed = sim != null ? sim.GetFormattedTimeScale() : "1x";
+            string paused = (sim != null && sim.isPaused)
+                ? TUIColors.Fg(TUIColors.BrightYellow, " PAUSED")
+                : "";
+
+            return new[]
+            {
+                $" {TUIColors.Bold("CONTROLS")}{paused}",
+                $"  Speed: {TUIColors.Fg(TUIColors.BrightGreen, speed)}",
+                "",
+                $"  {TUIColors.Fg(TUIColors.BrightCyan, "[1-4]")}     AI difficulty",
+                $"  {TUIColors.Fg(TUIColors.BrightCyan, "[S+1-4]")}   Load sample",
+                $"  {TUIColors.Fg(TUIColors.BrightCyan, "[R]")}       Reset code",
+                "",
+                $"  {TUIColors.Fg(TUIColors.BrightCyan, "[+/-]")}     Time scale",
+                $"  {TUIColors.Fg(TUIColors.BrightCyan, "[SPACE]")}   Pause",
+                $"  {TUIColors.Fg(TUIColors.BrightCyan, "[W]")}       Warp 10",
+                $"  {TUIColors.Fg(TUIColors.BrightCyan, "[ESC]")}     Cancel/reset",
+                "",
+                $"  {TUIColors.Fg(TUIColors.BrightCyan, "[Click]")}   Follow obj",
+                $"  {TUIColors.Fg(TUIColors.BrightCyan, "[Scroll]")}  Zoom",
+                $"  {TUIColors.Fg(TUIColors.BrightCyan, $"[{TUIGlyphs.ArrowU}/{TUIGlyphs.ArrowD}]")}     Scroll code",
             };
-
-            for (int i = 0; i < controls.Length && r < totalRows; i++)
-                SetRow(r++, controls[i]);
-
-            return r;
         }
     }
 }
