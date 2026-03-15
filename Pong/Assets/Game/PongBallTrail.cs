@@ -24,10 +24,13 @@ namespace Pong.Game
         private Renderer[] _trailRenderers;
         private int _writeIndex;
 
-        // Line mode (Ultra)
-        private LineRenderer _lineRenderer;
-        private List<Vector3> _linePoints;
+        // Line mode (Ultra) — one LineRenderer per color segment
+        private List<LineRenderer> _lineSegments;
+        private List<List<Vector3>> _segmentPoints;
         private bool _lineMode;
+        private Color _currentLineColor;
+        private Material _lineMaterial;
+        private static readonly Color GoldHDR = new Color(2f, 1.6f, 0.2f);
 
         // Shared
         private float _nextSpawnTime;
@@ -74,34 +77,17 @@ namespace Pong.Game
 
         private void BuildLineMode(Color trailColor)
         {
-            _linePoints = new List<Vector3>(512);
-            _lineRenderer = gameObject.AddComponent<LineRenderer>();
-            _lineRenderer.positionCount = 0;
-            _lineRenderer.startWidth = 0.08f;
-            _lineRenderer.endWidth = 0.03f;
-            _lineRenderer.useWorldSpace = true;
-            _lineRenderer.numCornerVertices = 2;
-            _lineRenderer.numCapVertices = 2;
+            _lineSegments = new List<LineRenderer>(16);
+            _segmentPoints = new List<List<Vector3>>(16);
+            _currentLineColor = GoldHDR;
 
-            // Gradient: cyan → magenta along the trail length
-            var grad = new Gradient();
-            grad.SetKeys(
-                new[] {
-                    new GradientColorKey(new Color(0f, 1f, 1f), 0f),
-                    new GradientColorKey(trailColor, 0.5f),
-                    new GradientColorKey(new Color(1f, 0f, 1f), 1f)
-                },
-                new[] {
-                    new GradientAlphaKey(0.1f, 0f),
-                    new GradientAlphaKey(0.4f, 0.7f),
-                    new GradientAlphaKey(0.7f, 1f)
-                }
-            );
-            _lineRenderer.colorGradient = grad;
+            // Shared material — vertex colors drive the color per-segment
+            var shader = Shader.Find("Sprites/Default")
+                ?? Shader.Find("Unlit/Color");
+            _lineMaterial = new Material(shader);
 
-            // Use an unlit material for the line
-            var shader = Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Color");
-            _lineRenderer.material = new Material(shader);
+            // Start first segment in gold
+            StartNewSegment(GoldHDR);
         }
 
         private void BuildSphereMode(Color trailColor)
@@ -148,13 +134,21 @@ namespace Pong.Game
                 _trailParts = null;
                 _trailRenderers = null;
             }
-            if (_lineRenderer != null)
-            {
-                Destroy(_lineRenderer);
-                _lineRenderer = null;
-            }
-            _linePoints = null;
+            ClearLineSegments();
             _writeIndex = 0;
+        }
+
+        private void ClearLineSegments()
+        {
+            if (_lineSegments != null)
+            {
+                for (int i = 0; i < _lineSegments.Count; i++)
+                    if (_lineSegments[i] != null)
+                        Destroy(_lineSegments[i]);
+                _lineSegments.Clear();
+            }
+            if (_segmentPoints != null)
+                _segmentPoints.Clear();
         }
 
         // ═════════════════════════════════════════════════════════════
@@ -188,21 +182,76 @@ namespace Pong.Game
         {
             var pos = new Vector3(_ball.Position.x, _ball.Position.y, 0.01f);
 
-            // Skip if too close to last point (avoids redundant vertices)
-            if (_linePoints.Count > 0 &&
-                Vector3.SqrMagnitude(pos - _linePoints[_linePoints.Count - 1]) < 0.001f)
+            if (_lineSegments == null || _lineSegments.Count == 0) return;
+            var points = _segmentPoints[_segmentPoints.Count - 1];
+            var lr = _lineSegments[_lineSegments.Count - 1];
+
+            // Skip if too close to last point
+            if (points.Count > 0 &&
+                Vector3.SqrMagnitude(pos - points[points.Count - 1]) < 0.001f)
                 return;
 
-            _linePoints.Add(pos);
-            _lineRenderer.positionCount = _linePoints.Count;
-            _lineRenderer.SetPosition(_linePoints.Count - 1, pos);
+            points.Add(pos);
+            lr.positionCount = points.Count;
+            lr.SetPosition(points.Count - 1, pos);
+        }
+
+        /// <summary>Start a new line segment with the given HDR color.</summary>
+        private void StartNewSegment(Color hdrColor)
+        {
+            var go = new GameObject($"TrailSeg_{_lineSegments.Count}");
+            go.transform.SetParent(transform, false);
+            var lr = go.AddComponent<LineRenderer>();
+            lr.positionCount = 0;
+            lr.startWidth = 0.08f;
+            lr.endWidth = 0.03f;
+            lr.useWorldSpace = true;
+            lr.numCornerVertices = 2;
+            lr.numCapVertices = 2;
+            lr.material = new Material(_lineMaterial);
+
+            // Solid color gradient for this segment
+            var grad = new Gradient();
+            grad.SetKeys(
+                new[] { new GradientColorKey(hdrColor, 0f), new GradientColorKey(hdrColor, 1f) },
+                new[] { new GradientAlphaKey(0.7f, 0f), new GradientAlphaKey(1f, 1f) }
+            );
+            lr.colorGradient = grad;
+
+            var points = new List<Vector3>(256);
+
+            // Bridge: duplicate last point of previous segment so there's no gap
+            if (_segmentPoints != null && _segmentPoints.Count > 0)
+            {
+                var prev = _segmentPoints[_segmentPoints.Count - 1];
+                if (prev.Count > 0)
+                {
+                    var bridgePos = prev[prev.Count - 1];
+                    points.Add(bridgePos);
+                    lr.positionCount = 1;
+                    lr.SetPosition(0, bridgePos);
+                }
+            }
+
+            _lineSegments.Add(lr);
+            _segmentPoints.Add(points);
+        }
+
+        /// <summary>Set the trail color from this point forward (e.g. on paddle hit).</summary>
+        public void SetSideColor(Color hdrColor)
+        {
+            if (!_lineMode) return;
+            _currentLineColor = hdrColor;
+            StartNewSegment(hdrColor);
         }
 
         /// <summary>Clear the persistent line trail (call on match reset).</summary>
         public void ClearLine()
         {
-            if (_linePoints != null) _linePoints.Clear();
-            if (_lineRenderer != null) _lineRenderer.positionCount = 0;
+            ClearLineSegments();
+            _currentLineColor = GoldHDR;
+            if (_lineMode)
+                StartNewSegment(GoldHDR);
         }
 
         // ── Sphere mode (Low/Med/High) ───────────────────────────
