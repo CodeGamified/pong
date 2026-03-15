@@ -14,16 +14,17 @@ namespace Pong.Audio
     public class PongAudioProvider : IAudioProvider
     {
         private AudioSource _source;
+        private AudioSource _musicSource;
 
         // Pre-generated clips
-        private AudioClip _blip;       // paddle hit — short high beep
-        private AudioClip _boop;       // wall bounce — lower tick
-        private AudioClip _score;      // goal scored — rising sweep
-        private AudioClip _serve;      // serve — quick chirp
-        private AudioClip _matchWon;   // match end — descending arpeggio
-        private AudioClip _tick;       // instruction step — tiny click
-        private AudioClip _error;      // compile error — harsh buzz
-        private AudioClip _tap;        // generic tap
+        private AudioClip _blip;       // paddle hit — 808 kick
+        private AudioClip _boop;       // wall bounce — low thud
+        private AudioClip _score;      // goal scored — deep rising bass
+        private AudioClip _serve;      // serve — punchy bass hit
+        private AudioClip _matchWon;   // match end — sub-bass drop
+        private AudioClip _tick;       // instruction step — soft sub tap
+        private AudioClip _error;      // compile error — distorted bass
+        private AudioClip _tap;        // generic bass tap
 
         public PongAudioProvider()
         {
@@ -33,25 +34,61 @@ namespace Pong.Audio
             _source.playOnAwake = false;
             _source.spatialBlend = 0f; // 2D
 
+            // Music source — separate so volume can be controlled independently
+            _musicSource = go.AddComponent<AudioSource>();
+            _musicSource.playOnAwake = false;
+            _musicSource.spatialBlend = 0f;
+            _musicSource.loop = true;
+
             GenerateClips();
+            StartMusic();
+
+            // Auto-update music volume when settings change
+            SettingsBridge.OnChanged += OnSettingsChanged;
+        }
+
+        private void OnSettingsChanged(SettingsSnapshot snapshot, SettingsCategory category)
+        {
+            if (category == SettingsCategory.Audio)
+                UpdateMusicVolume();
         }
 
         private void GenerateClips()
         {
-            _blip = SynthTone(880f, 0.06f, "blip");         // A5 — paddle hit
-            _boop = SynthTone(440f, 0.04f, "boop");          // A4 — wall bounce
-            _score = SynthSweep(440f, 880f, 0.2f, "score");  // A4→A5 rising sweep
-            _serve = SynthTone(660f, 0.08f, "serve");        // E5 — chirp
-            _matchWon = SynthSweep(880f, 220f, 0.4f, "win"); // A5→A3 descending
-            _tick = SynthTone(1200f, 0.015f, "tick");         // tiny click
-            _error = SynthNoise(0.15f, "error");              // harsh noise burst
-            _tap = SynthTone(600f, 0.03f, "tap");             // quick tap
+            _blip = SynthKick(160f, 50f, 0.15f, "blip");      // 808 kick — paddle hit
+            _boop = SynthKick(120f, 45f, 0.10f, "boop");      // low thud — wall bounce
+            _score = SynthSweep(55f, 180f, 0.3f, "score");    // deep rising bass
+            _serve = SynthKick(200f, 60f, 0.12f, "serve");    // punchy bass hit
+            _matchWon = SynthSweep(180f, 35f, 0.5f, "win");   // sub-bass drop
+            _tick = SynthTone(80f, 0.04f, "tick");             // soft sub tap
+            _error = SynthDistBass(55f, 0.2f, "error");        // distorted low buzz
+            _tap = SynthKick(100f, 50f, 0.06f, "tap");         // quick bass tap
         }
 
         private void Play(AudioClip clip, float volume = 0.3f)
         {
             if (_source != null && clip != null)
                 _source.PlayOneShot(clip, volume * SettingsBridge.SfxVolume);
+        }
+
+        private void StartMusic()
+        {
+            var clip = Resources.Load<AudioClip>("retro");
+            if (clip == null)
+            {
+                Debug.LogWarning("[PongAudio] Music clip 'retro' not found in Resources.");
+                return;
+            }
+            _musicSource.clip = clip;
+            _musicSource.volume = SettingsBridge.MusicVolume * SettingsBridge.MasterVolume;
+            _musicSource.Play();
+        }
+
+        /// <summary>Call each frame or on settings change to keep music volume in sync.</summary>
+        public void UpdateMusicVolume()
+        {
+            if (_musicSource != null && _musicSource.clip != null)
+                _musicSource.volume = SettingsBridge.MusicVolume * SettingsBridge.MasterVolume;
         }
 
         // ── IAudioProvider: Editor ──
@@ -105,9 +142,52 @@ namespace Pong.Audio
             for (int i = 0; i < sampleCount; i++)
             {
                 float t = (float)i / sampleRate;
-                float envelope = 1f - (t / duration); // linear decay
-                envelope *= envelope; // quadratic decay — punchier
+                float envelope = Mathf.Exp(-6f * t / duration); // exponential decay — 808 style
                 data[i] = Mathf.Sin(2f * Mathf.PI * freq * t) * envelope;
+            }
+
+            clip.SetData(data, 0);
+            return clip;
+        }
+
+        /// <summary>808-style kick: rapid pitch drop from attack to sustain with exponential decay.</summary>
+        private static AudioClip SynthKick(float attackFreq, float sustainFreq, float duration, string name)
+        {
+            int sampleRate = 44100;
+            int sampleCount = Mathf.CeilToInt(sampleRate * duration);
+            var clip = AudioClip.Create(name, sampleCount, 1, sampleRate, false);
+            float[] data = new float[sampleCount];
+            float phase = 0f;
+
+            for (int i = 0; i < sampleCount; i++)
+            {
+                float t = (float)i / sampleRate;
+                // Rapid exponential pitch drop — characteristic 808 boom
+                float freq = sustainFreq + (attackFreq - sustainFreq) * Mathf.Exp(-30f * t);
+                float envelope = Mathf.Exp(-5f * t / duration);
+                phase += 2f * Mathf.PI * freq / sampleRate;
+                data[i] = Mathf.Sin(phase) * envelope;
+            }
+
+            clip.SetData(data, 0);
+            return clip;
+        }
+
+        /// <summary>Distorted sub-bass — sine wave with soft clipping for gritty low-end.</summary>
+        private static AudioClip SynthDistBass(float freq, float duration, string name)
+        {
+            int sampleRate = 44100;
+            int sampleCount = Mathf.CeilToInt(sampleRate * duration);
+            var clip = AudioClip.Create(name, sampleCount, 1, sampleRate, false);
+            float[] data = new float[sampleCount];
+
+            for (int i = 0; i < sampleCount; i++)
+            {
+                float t = (float)i / sampleRate;
+                float envelope = Mathf.Exp(-4f * t / duration);
+                float raw = Mathf.Sin(2f * Mathf.PI * freq * t) * 3f; // overdrive
+                float clipped = raw / (1f + Mathf.Abs(raw));           // soft clip
+                data[i] = clipped * envelope;
             }
 
             clip.SetData(data, 0);
@@ -120,34 +200,16 @@ namespace Pong.Audio
             int sampleCount = Mathf.CeilToInt(sampleRate * duration);
             var clip = AudioClip.Create(name, sampleCount, 1, sampleRate, false);
             float[] data = new float[sampleCount];
+            float phase = 0f;
 
             for (int i = 0; i < sampleCount; i++)
             {
                 float t = (float)i / sampleRate;
                 float progress = t / duration;
                 float freq = Mathf.Lerp(startFreq, endFreq, progress);
-                float envelope = 1f - progress;
-                data[i] = Mathf.Sin(2f * Mathf.PI * freq * t) * envelope;
-            }
-
-            clip.SetData(data, 0);
-            return clip;
-        }
-
-        private static AudioClip SynthNoise(float duration, string name)
-        {
-            int sampleRate = 44100;
-            int sampleCount = Mathf.CeilToInt(sampleRate * duration);
-            var clip = AudioClip.Create(name, sampleCount, 1, sampleRate, false);
-            float[] data = new float[sampleCount];
-
-            // Seeded for determinism
-            var rng = new System.Random(42);
-            for (int i = 0; i < sampleCount; i++)
-            {
-                float t = (float)i / sampleRate;
-                float envelope = 1f - (t / duration);
-                data[i] = ((float)rng.NextDouble() * 2f - 1f) * envelope * 0.5f;
+                float envelope = Mathf.Exp(-3f * progress); // exponential decay
+                phase += 2f * Mathf.PI * freq / sampleRate;
+                data[i] = Mathf.Sin(phase) * envelope;
             }
 
             clip.SetData(data, 0);

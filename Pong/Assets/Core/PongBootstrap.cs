@@ -2,6 +2,8 @@
 // MIT License — Pong: Hello World
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 using CodeGamified.Audio;
 using CodeGamified.Camera;
 using CodeGamified.Editor;
@@ -17,6 +19,7 @@ using Pong.AI;
 using Pong.UI;
 using CodeGamified.Settings;
 using CodeGamified.Quality;
+using CodeGamified.Bootstrap;
 
 namespace Pong.Core
 {
@@ -32,8 +35,10 @@ namespace Pong.Core
     ///
     /// Attach to a GameObject. Press Play → Pong appears.
     /// </summary>
-    public class PongBootstrap : MonoBehaviour
+    public class PongBootstrap : GameBootstrap
     {
+        protected override string LogTag => "PONG";
+
         // =================================================================
         // INSPECTOR
         // =================================================================
@@ -106,9 +111,6 @@ namespace Pong.Core
         [Header("Camera")]
         public bool configureCamera = true;
 
-        [Header("Debug")]
-        public bool debugLogging = true;
-
         // =================================================================
         // RUNTIME REFERENCES
         // =================================================================
@@ -150,6 +152,13 @@ namespace Pong.Core
         // Ball trail
         private PongBallTrail _ballTrail;
 
+        // Ball glow light
+        private Light _ballLight;
+        private float _ballLightTarget;
+        private Color _ballLightColorTarget;
+        private const float BallLightBaseIntensity = 0.8f;
+        private const float BallLightDecay = 6f;
+
         // Camera (from .engine Camera)
         private CameraAmbientMotion _cameraSway;
         private Transform _cameraFollowTarget;
@@ -178,6 +187,7 @@ namespace Pong.Core
             UpdateCameraFollow();
             HandleCameraClick();
             HandleCameraEscape();
+            UpdateBallLight();
         }
 
         private void HandleScrollZoom()
@@ -334,6 +344,117 @@ namespace Pong.Core
         }
 
         // =================================================================
+        // BALL LIGHT
+        // =================================================================
+
+        private void FlashBallLight(float intensity, Color color)
+        {
+            if (_ballLight == null) return;
+            _ballLight.intensity = intensity;
+            _ballLight.color = color;
+            _ballLight.range = 4f + intensity * 0.5f;
+            _ballLightTarget = intensity;
+            _ballLightColorTarget = color;
+        }
+
+        private void UpdateBallLight()
+        {
+            if (_ballLight == null) return;
+            float decay = Mathf.Clamp01(BallLightDecay * Time.unscaledDeltaTime);
+            // Decay toward baseline
+            _ballLight.intensity = Mathf.Lerp(_ballLight.intensity, BallLightBaseIntensity, decay);
+            _ballLight.color = Color.Lerp(_ballLight.color, Color.yellow, decay);
+            _ballLight.range = Mathf.Lerp(_ballLight.range, 6f, decay);
+
+            // Also decay ball material base color back to white
+            DecayBallColor();
+        }
+
+        private static readonly Color BallBaseColor = Color.white;
+        private Color _ballColorTarget = Color.white;
+
+        // Track flashed renderers for decay
+        private readonly List<(Renderer renderer, Color baseColor)> _flashedRenderers = new();
+
+        private void FlashBallColor(Color hdrColor)
+        {
+            if (_ballVisual.Renderers == null) return;
+            if (!_ballVisual.Renderers.TryGetValue("body", out var r)) return;
+            _ballColorTarget = hdrColor;
+            var mat = r.material;
+            if (mat.HasProperty("_BaseColor"))
+                mat.SetColor("_BaseColor", hdrColor);
+            else
+                mat.color = hdrColor;
+        }
+
+        private void FlashRendererColor(AssemblyResult visual, string partId, Color hdrColor)
+        {
+            if (visual.Renderers == null) return;
+            if (!visual.Renderers.TryGetValue(partId, out var r)) return;
+            var mat = r.material;
+            // Remove existing entry for this renderer to reset decay
+            int existingIdx = _flashedRenderers.FindIndex(e => e.renderer == r);
+            Color origColor;
+            if (existingIdx >= 0)
+            {
+                // Reuse previously stored base color (not current mid-flash HDR)
+                origColor = _flashedRenderers[existingIdx].baseColor;
+                _flashedRenderers.RemoveAt(existingIdx);
+            }
+            else
+            {
+                origColor = mat.HasProperty("_BaseColor") ? mat.GetColor("_BaseColor") : mat.color;
+                // Clamp to LDR so we never store a mid-flash HDR value as base
+                origColor.r = Mathf.Min(origColor.r, 1f);
+                origColor.g = Mathf.Min(origColor.g, 1f);
+                origColor.b = Mathf.Min(origColor.b, 1f);
+            }
+            _flashedRenderers.Add((r, origColor));
+            if (mat.HasProperty("_BaseColor"))
+                mat.SetColor("_BaseColor", hdrColor);
+            else
+                mat.color = hdrColor;
+        }
+
+        private void DecayBallColor()
+        {
+            float decay = Mathf.Clamp01(BallLightDecay * Time.unscaledDeltaTime);
+
+            if (_ballVisual.Renderers == null) return;
+            if (!_ballVisual.Renderers.TryGetValue("body", out var r)) return;
+            var mat = r.material;
+            Color current = mat.HasProperty("_BaseColor")
+                ? mat.GetColor("_BaseColor") : mat.color;
+            Color next = Color.Lerp(current, BallBaseColor, decay);
+            if (mat.HasProperty("_BaseColor"))
+                mat.SetColor("_BaseColor", next);
+            else
+                mat.color = next;
+
+            // Decay all flashed renderers back to their original color
+            for (int i = _flashedRenderers.Count - 1; i >= 0; i--)
+            {
+                var (fr, baseCol) = _flashedRenderers[i];
+                if (fr == null) { _flashedRenderers.RemoveAt(i); continue; }
+                var fmat = fr.material;
+                Color fc = fmat.HasProperty("_BaseColor") ? fmat.GetColor("_BaseColor") : fmat.color;
+                Color fn = Color.Lerp(fc, baseCol, decay);
+                if (fmat.HasProperty("_BaseColor"))
+                    fmat.SetColor("_BaseColor", fn);
+                else
+                    fmat.color = fn;
+                // Remove when close enough
+                if (Mathf.Abs(fn.r - baseCol.r) + Mathf.Abs(fn.g - baseCol.g) + Mathf.Abs(fn.b - baseCol.b) < 0.03f)
+                {
+                    if (fmat.HasProperty("_BaseColor")) fmat.SetColor("_BaseColor", baseCol);
+                    else fmat.color = baseCol;
+                    _flashedRenderers.RemoveAt(i);
+                }
+            }
+        }
+
+        // =================================================================
         // BOOTSTRAP
         // =================================================================
 
@@ -374,15 +495,7 @@ namespace Pong.Core
 
         private void SetupSimulationTime()
         {
-            if (SimulationTime.Instance != null)
-            {
-                Log("SimulationTime already exists.");
-                return;
-            }
-
-            var go = new GameObject("SimulationTime");
-            go.AddComponent<PongSimulationTime>();
-            Log("Created PongSimulationTime (engine subclass)");
+            EnsureSimulationTime<PongSimulationTime>();
         }
 
         // =================================================================
@@ -393,14 +506,7 @@ namespace Pong.Core
         {
             if (!configureCamera) return;
 
-            var cam = Camera.main;
-            if (cam == null)
-            {
-                var go = new GameObject("Main Camera");
-                go.tag = "MainCamera";
-                cam = go.AddComponent<Camera>();
-                go.AddComponent<AudioListener>();
-            }
+            var cam = EnsureCamera();
 
             // Perspective 3D view — looking down at the court
             cam.orthographic = false;
@@ -416,7 +522,27 @@ namespace Pong.Core
             _cameraSway = cam.gameObject.AddComponent<CameraAmbientMotion>();
             _cameraSway.lookAtTarget = Vector3.zero;
 
-            Log($"Camera: perspective, FOV=60, 3D view + click-to-follow + sway");
+            // ── Post-processing: bloom for emission glow ──
+            var camData = cam.GetComponent<UniversalAdditionalCameraData>();
+            if (camData == null)
+                camData = cam.gameObject.AddComponent<UniversalAdditionalCameraData>();
+            camData.renderPostProcessing = true;
+
+            var volumeGO = new GameObject("PostProcessVolume");
+            var volume = volumeGO.AddComponent<Volume>();
+            volume.isGlobal = true;
+            volume.priority = 1;
+            var profile = ScriptableObject.CreateInstance<VolumeProfile>();
+            var bloom = profile.Add<Bloom>();
+            bloom.threshold.overrideState = true;
+            bloom.threshold.value = 0.9f;
+            bloom.intensity.overrideState = true;
+            bloom.intensity.value = 5f;
+            bloom.scatter.overrideState = true;
+            bloom.scatter.value = 0.7f;
+            volume.profile = profile;
+
+            Log($"Camera: perspective, FOV=60, 3D view + click-to-follow + sway + bloom");
         }
 
         // =================================================================
@@ -482,7 +608,19 @@ namespace Pong.Core
             if (_ballVisual.Root != null)
                 _ballVisual.Root.transform.SetParent(go.transform, false);
 
-            Log("Created 3D Ball (Sphere) via ProceduralAssembler");
+            // Point light child for visible glow on events
+            var lightGO = new GameObject("BallGlow");
+            lightGO.transform.SetParent(go.transform, false);
+            _ballLight = lightGO.AddComponent<Light>();
+            _ballLight.type = LightType.Point;
+            _ballLight.range = 6f;
+            _ballLight.intensity = BallLightBaseIntensity;
+            _ballLight.color = Color.yellow;
+            _ballLight.shadows = LightShadows.None;
+            _ballLightTarget = BallLightBaseIntensity;
+            _ballLightColorTarget = Color.yellow;
+
+            Log("Created 3D Ball (Sphere) via ProceduralAssembler + Point Light");
         }
 
         // =================================================================
@@ -695,7 +833,10 @@ namespace Pong.Core
             if (_match != null)
             {
                 _match.OnPointScored += (side, leftScore, rightScore) =>
+                {
                     Log($"SCORE! {side} │ {leftScore}-{rightScore}");
+                    _ballTrail?.ClearLine(); // Reset trail each round
+                };
 
                 _match.OnMatchEnded += (winner) =>
                 {
@@ -715,9 +856,10 @@ namespace Pong.Core
                 {
                     _audioProvider?.PlayServe();
 
-                    // Ball respawn pulse
-                    _ballVisual.VisualState?.Pulse("body", new Color(1f, 1f, 0.5f), 0.3f);
-                    _ballVisual.VisualState?.Throb("body", 1.4f, 0.25f);
+                    // Ball respawn glow
+                    _ballVisual.VisualState?.Pulse("body", new Color(20f, 20f, 10f), 0.4f);
+                    FlashBallLight(8f, new Color(1f, 1f, 0.5f));
+                    FlashBallColor(new Color(4f, 4f, 2f));
                 };
             }
 
@@ -727,13 +869,20 @@ namespace Pong.Core
                 _ball.OnPaddleHit += (side) =>
                 {
                     if (side == PaddleSide.Left && _leftPaddleVisual.VisualState != null)
+                    {
                         _leftPaddleVisual.VisualState.Pulse("body", Color.cyan, 0.15f);
+                        FlashRendererColor(_leftPaddleVisual, "body", new Color(0f, 4f, 4f));
+                    }
                     else if (side == PaddleSide.Right && _rightPaddleVisual.VisualState != null)
+                    {
                         _rightPaddleVisual.VisualState.Pulse("body", new Color(1f, 0.2f, 0.8f), 0.15f);
+                        FlashRendererColor(_rightPaddleVisual, "body", new Color(4f, 1f, 3f));
+                    }
 
-                    // Ball reacts to paddle hit
-                    _ballVisual.VisualState?.Pulse("body", Color.white, 0.12f);
-                    _ballVisual.VisualState?.Throb("body", 1.3f, 0.15f);
+                    // Ball reacts to paddle hit — glow only, no scale
+                    _ballVisual.VisualState?.Pulse("body", new Color(15f, 15f, 15f), 0.2f);
+                    FlashBallLight(12f, side == PaddleSide.Left ? Color.cyan : new Color(1f, 0.3f, 0.9f));
+                    FlashBallColor(side == PaddleSide.Left ? new Color(0f, 4f, 4f) : new Color(4f, 1f, 3f));
 
                     _audioProvider?.PlayPaddleHit();
                     _hapticProvider?.TapMedium();
@@ -741,16 +890,19 @@ namespace Pong.Core
 
                 _ball.OnWallHit += () =>
                 {
-                    var courtVS = _court?.Visual.VisualState;
-                    if (courtVS != null)
-                    {
-                        courtVS.Pulse("wall_top", Color.white, 0.1f);
-                        courtVS.Pulse("wall_bottom", Color.white, 0.1f);
-                    }
+                    var courtVisual = _court?.Visual;
+                    var courtVS = courtVisual?.VisualState;
+                    bool hitTop = _ball.Position.y > 0;
+                    string wallId = hitTop ? "wall_top" : "wall_bottom";
 
-                    // Ball reacts to wall hit
-                    _ballVisual.VisualState?.Pulse("body", Color.white, 0.1f);
-                    _ballVisual.VisualState?.Throb("body", 1.2f, 0.12f);
+                    courtVS?.Pulse(wallId, Color.white, 0.1f);
+                    if (courtVisual != null)
+                        FlashRendererColor(courtVisual.Value, wallId, new Color(3f, 3f, 3f));
+
+                    // Ball reacts to wall hit — glow only, no scale
+                    _ballVisual.VisualState?.Pulse("body", new Color(10f, 10f, 10f), 0.15f);
+                    FlashBallLight(6f, Color.white);
+                    FlashBallColor(new Color(3f, 3f, 3f));
 
                     _audioProvider?.PlayWallBounce();
                     _hapticProvider?.TapLight();
@@ -761,22 +913,25 @@ namespace Pong.Core
                     _audioProvider?.PlayGoalScored();
                     _hapticProvider?.TapHeavy();
 
-                    // Ball flash on score
-                    _ballVisual.VisualState?.Pulse("body", Color.yellow, 0.3f);
-                    _ballVisual.VisualState?.Throb("body", 1.5f, 0.25f);
+                    // Ball flash on score — glow only, no scale
+                    _ballVisual.VisualState?.Pulse("body", new Color(25f, 25f, 0f), 0.5f);
+                    FlashBallLight(20f, Color.yellow);
+                    FlashBallColor(new Color(5f, 5f, 0f));
 
                     // Flash the scoring paddle + goal zone
                     if (scorer == PaddleSide.Left)
                     {
-                        _leftPaddleVisual.VisualState?.Pulse("body", Color.white, 0.3f);
-                        _leftGoalVisual.VisualState?.Pulse("zone", Color.cyan, 0.5f);
-                        _leftGoalVisual.VisualState?.Throb("zone", 1.15f, 0.4f);
+                        _leftPaddleVisual.VisualState?.Pulse("body", new Color(0f, 15f, 15f), 0.4f);
+                        _leftGoalVisual.VisualState?.Pulse("zone", new Color(0f, 20f, 20f), 0.6f);
+                        FlashRendererColor(_leftPaddleVisual, "body", new Color(0f, 4f, 4f));
+                        FlashRendererColor(_leftGoalVisual, "zone", new Color(0f, 5f, 5f));
                     }
                     else
                     {
-                        _rightPaddleVisual.VisualState?.Pulse("body", Color.white, 0.3f);
-                        _rightGoalVisual.VisualState?.Pulse("zone", new Color(1f, 0.2f, 0.8f), 0.5f);
-                        _rightGoalVisual.VisualState?.Throb("zone", 1.15f, 0.4f);
+                        _rightPaddleVisual.VisualState?.Pulse("body", new Color(15f, 3f, 12f), 0.4f);
+                        _rightGoalVisual.VisualState?.Pulse("zone", new Color(20f, 4f, 16f), 0.6f);
+                        FlashRendererColor(_rightPaddleVisual, "body", new Color(4f, 1f, 3f));
+                        FlashRendererColor(_rightGoalVisual, "zone", new Color(5f, 1f, 4f));
                     }
                 };
             }
@@ -786,7 +941,7 @@ namespace Pong.Core
             {
                 _ballVisual.VisualState.Bind("body",
                     () => _ball.CurrentSpeed / ballMaxSpeed,
-                    VisualChannel.Emission, 0f, 2f);
+                    VisualChannel.Emission, 0f, 0.3f);
             }
 
             // ── Audio: engine instruction step sounds ──
@@ -861,10 +1016,5 @@ namespace Pong.Core
             }
         }
 
-        private void Log(string message)
-        {
-            if (debugLogging)
-                Debug.Log($"[PONG] {message}");
-        }
     }
 }

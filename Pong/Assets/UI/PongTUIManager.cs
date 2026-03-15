@@ -128,7 +128,7 @@ namespace Pong.UI
         {
             // ── Left panel: Player's code debugger ──
             _leftPanelRect = CreatePanel("PlayerPanel",
-                new Vector2(0f, 0.04f),
+                new Vector2(0f, 0.25f),
                 new Vector2(0.25f, 1f));
 
             _playerDebugger = _leftPanelRect.gameObject.AddComponent<PongCodeDebugger>();
@@ -144,7 +144,7 @@ namespace Pong.UI
 
             // ── Right panel: AI code debugger ──
             _rightPanelRect = CreatePanel("AIPanel",
-                new Vector2(0.75f, 0.04f),
+                new Vector2(0.75f, 0.25f),
                 new Vector2(1f, 1f));
 
             _aiDebugger = _rightPanelRect.gameObject.AddComponent<PongCodeDebugger>();
@@ -158,10 +158,10 @@ namespace Pong.UI
             TUIEdgeDragger.Create(_rightPanelRect, _canvasRect, TUIEdgeDragger.Edge.Left);
             var rightBottom = TUIEdgeDragger.Create(_rightPanelRect, _canvasRect, TUIEdgeDragger.Edge.Bottom);
 
-            // ── Status bar (bottom 4%) ──
+            // ── Status bar (bottom 25%) ──
             _statusBarRect = CreatePanel("StatusBar",
                 new Vector2(0f, 0f),
-                new Vector2(1f, 0.04f));
+                new Vector2(1f, 0.25f));
 
             _statusBar = _statusBarRect.gameObject.AddComponent<PongStatusBar>();
             AddPanelBackground(_statusBarRect);

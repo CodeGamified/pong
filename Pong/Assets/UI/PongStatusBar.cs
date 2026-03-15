@@ -5,6 +5,8 @@ using System.Text;
 using UnityEngine;
 using CodeGamified.TUI;
 using CodeGamified.Time;
+using CodeGamified.Settings;
+using CodeGamified.Quality;
 using Pong.Game;
 using Pong.AI;
 using Pong.Scripting;
@@ -46,38 +48,38 @@ namespace Pong.UI
 
         private static readonly string[] CodeRows =
         {
-            "| █████████  ████████  █████████   █████████|",
-            "|██         ██      ██ ██      ██ ██        |",
-            "|██         ██      ██ ██      ██ ██████████|",
-            "|██         ██      ██ ██      ██ ██        |",
-            "| █████████  ████████  █████████   █████████|",
+            "░▒▓██▓▒░   █████████  ████████  █████████   █████████  ░▒▓██▓▒░",
+            "░▒▓██▓▒░  ██         ██      ██ ██      ██ ██          ░▒▓██▓▒░",
+            "░▒▓██▓▒░  ██         ██      ██ ██      ██ ██████████  ░▒▓██▓▒░",
+            "░▒▓██▓▒░  ██         ██      ██ ██      ██ ██          ░▒▓██▓▒░",
+            "░▒▓██▓▒░   █████████  ████████  █████████   █████████  ░▒▓██▓▒░",
         };
 
         private static readonly string[] GameRows =
         {
-            "| █████████  ████████   ████████   █████████|",
-            "|██         ██      ██ ██  ██  ██ ██        |",
-            "|██   █████ ██████████ ██  ██  ██ ██████████|",
-            "|██      ██ ██      ██ ██  ██  ██ ██        |",
-            "| █████████ ██      ██ ██  ██  ██  █████████|",
+            "░▒▓██▓▒░   █████████  ████████   ████████   █████████  ░▒▓██▓▒░",
+            "░▒▓██▓▒░  ██         ██      ██ ██  ██  ██ ██          ░▒▓██▓▒░",
+            "░▒▓██▓▒░  ██   █████ ██████████ ██  ██  ██ ██████████  ░▒▓██▓▒░",
+            "░▒▓██▓▒░  ██      ██ ██      ██ ██  ██  ██ ██          ░▒▓██▓▒░",
+            "░▒▓██▓▒░   █████████ ██      ██ ██  ██  ██  █████████  ░▒▓██▓▒░",
         };
 
         private static readonly string[] PingRows =
         {
-            "|█████████  █████████ ██      ██  █████████|",
-            "|██      ██    ██     ████    ██ ██        |",
-            "|█████████     ██     ██  ██  ██ ██   █████|",
-            "|██            ██     ██    ████ ██      ██|",
-            "|██         █████████ ██      ██  █████████|",
+            "░▒▓██▓▒░  █████████  ██████████ ██      ██  █████████  ░▒▓██▓▒░",
+            "░▒▓██▓▒░  ██      ██     ██     ████    ██ ██          ░▒▓██▓▒░",
+            "░▒▓██▓▒░  █████████      ██     ██  ██  ██ ██   █████  ░▒▓██▓▒░",
+            "░▒▓██▓▒░  ██             ██     ██    ████ ██      ██  ░▒▓██▓▒░",
+            "░▒▓██▓▒░  ██         ██████████ ██      ██  █████████  ░▒▓██▓▒░",
         };
 
         private static readonly string[] PongRows =
         {
-            "|█████████   ████████  ██      ██  █████████|",
-            "|██      ██ ██      ██ ████    ██ ██        |",
-            "|█████████  ██      ██ ██  ██  ██ ██   █████|",
-            "|██         ██      ██ ██    ████ ██      ██|",
-            "|██          ████████  ██      ██  █████████|",
+            "░▒▓██▓▒░  █████████   ████████  ██      ██  █████████  ░▒▓██▓▒░",
+            "░▒▓██▓▒░  ██      ██ ██      ██ ████    ██ ██          ░▒▓██▓▒░",
+            "░▒▓██▓▒░  █████████  ██      ██ ██  ██  ██ ██   █████  ░▒▓██▓▒░",
+            "░▒▓██▓▒░  ██         ██      ██ ██    ████ ██      ██  ░▒▓██▓▒░",
+            "░▒▓██▓▒░  ██          ████████  ██      ██  █████████  ░▒▓██▓▒░",
         };
 
         // Expand detection
@@ -88,7 +90,29 @@ namespace Pong.UI
         {
             base.Awake();
             windowTitle = "PONG";
-            totalRows = 2;
+            // Don't hardcode totalRows — let CheckResize() compute from panel height.
+            // Use a large initial value so BuildRows() creates enough rows for the 25% panel.
+            totalRows = 40;
+        }
+
+        /// <summary>
+        /// Called after layout measurement. Recalculate row count from actual panel height
+        /// so the status bar fills its space on first load.
+        /// </summary>
+        protected override void OnLayoutReady()
+        {
+            var rt = GetComponent<RectTransform>();
+            if (rt == null || rows.Count == 0) return;
+            float h = rt.rect.height;
+            float rowH = rows[0].RowHeight;
+            if (rowH <= 0) return;
+            int fitRows = Mathf.Max(2, Mathf.FloorToInt(h / rowH));
+            if (fitRows != totalRows)
+            {
+                for (int i = 0; i < rows.Count; i++)
+                    rows[i].gameObject.SetActive(i < fitRows);
+                totalRows = fitRows;
+            }
         }
 
         public void Bind(PongMatchManager match, PongLeaderboard leaderboard,
@@ -173,6 +197,28 @@ namespace Pong.UI
                 _playerScriptTier = null;
                 Debug.Log("[Menu] Player script reset to starter code");
             }
+
+            // Quality cycle
+            if (Input.GetKeyDown(KeyCode.Q))
+            {
+                int next = (SettingsBridge.QualityLevel + 1) % 4;
+                SettingsBridge.SetQualityLevel(next);
+                Debug.Log($"[Menu] Quality → {(QualityTier)next}");
+            }
+
+            // Font size: [ / ] keys
+            if (Input.GetKeyDown(KeyCode.RightBracket))
+                SettingsBridge.SetFontSize(SettingsBridge.FontSize + 1f);
+            if (Input.GetKeyDown(KeyCode.LeftBracket))
+                SettingsBridge.SetFontSize(SettingsBridge.FontSize - 1f);
+
+            // Audio: F5/F6/F7 cycle Master/Music/SFX by ±10%
+            if (Input.GetKeyDown(KeyCode.F5))
+                SettingsBridge.SetMasterVolume(SettingsBridge.MasterVolume + (shift ? -0.1f : 0.1f));
+            if (Input.GetKeyDown(KeyCode.F6))
+                SettingsBridge.SetMusicVolume(SettingsBridge.MusicVolume + (shift ? -0.1f : 0.1f));
+            if (Input.GetKeyDown(KeyCode.F7))
+                SettingsBridge.SetSfxVolume(SettingsBridge.SfxVolume + (shift ? -0.1f : 0.1f));
         }
 
         private void LoadPlayerSample(AIDifficulty diff)
@@ -472,21 +518,31 @@ namespace Pong.UI
 
             for (int i = 0; i < len; i++)
             {
+                float t = len > 1 ? (float)i / (len - 1) : 0f;
+                char srcCh = i < src.Length ? src[i] : ' ';
+                char tgtCh = tgt[i];
+
+                // Unchanged characters stay static — no glitch
+                if (srcCh == tgtCh)
+                {
+                    sb.Append(TUIColors.Fg(GradientAt(t), tgtCh.ToString()));
+                    continue;
+                }
+
                 int idx = threshOffset + i;
                 bool isSettled = _revealThresholds != null
                     && idx < _revealThresholds.Length
                     && progress >= _revealThresholds[idx];
 
-                float t = len > 1 ? (float)i / (len - 1) : 0f;
                 char ch;
 
                 if (isSettled)
                 {
-                    ch = tgt[i];
+                    ch = tgtCh;
                 }
                 else
                 {
-                    bool hasContent = (i < src.Length && src[i] != ' ') || tgt[i] != ' ';
+                    bool hasContent = srcCh != ' ' || tgtCh != ' ';
                     ch = hasContent ? GlitchGlyphs[Random.Range(0, GlitchGlyphs.Length)] : ' ';
                 }
 
@@ -504,30 +560,57 @@ namespace Pong.UI
 
         private string[] BuildRightColumn()
         {
+            var lines = new List<string>();
             var sim = SimulationTime.Instance;
             string speed = sim != null ? sim.GetFormattedTimeScale() : "1x";
             string paused = (sim != null && sim.isPaused)
                 ? TUIColors.Fg(TUIColors.BrightYellow, " PAUSED")
                 : "";
 
-            return new[]
-            {
-                $" {TUIColors.Bold("CONTROLS")}{paused}",
-                $"  Speed: {TUIColors.Fg(TUIColors.BrightGreen, speed)}",
-                "",
-                $"  {TUIColors.Fg(TUIColors.BrightCyan, "[1-4]")}     AI difficulty",
-                $"  {TUIColors.Fg(TUIColors.BrightCyan, "[S+1-4]")}   Load sample",
-                $"  {TUIColors.Fg(TUIColors.BrightCyan, "[R]")}       Reset code",
-                "",
-                $"  {TUIColors.Fg(TUIColors.BrightCyan, "[+/-]")}     Time scale",
-                $"  {TUIColors.Fg(TUIColors.BrightCyan, "[SPACE]")}   Pause",
-                $"  {TUIColors.Fg(TUIColors.BrightCyan, "[W]")}       Warp 10",
-                $"  {TUIColors.Fg(TUIColors.BrightCyan, "[ESC]")}     Cancel/reset",
-                "",
-                $"  {TUIColors.Fg(TUIColors.BrightCyan, "[Click]")}   Follow obj",
-                $"  {TUIColors.Fg(TUIColors.BrightCyan, "[Scroll]")}  Zoom",
-                $"  {TUIColors.Fg(TUIColors.BrightCyan, $"[{TUIGlyphs.ArrowU}/{TUIGlyphs.ArrowD}]")}     Scroll code",
-            };
+            // ── Controls ───────────────────
+            lines.Add($" {TUIColors.Bold("CONTROLS")}{paused}");
+            lines.Add($"  Speed: {TUIColors.Fg(TUIColors.BrightGreen, speed)}");
+            lines.Add("");
+            lines.Add($"  {TUIColors.Fg(TUIColors.BrightCyan, "[1-4]")}     AI difficulty");
+            lines.Add($"  {TUIColors.Fg(TUIColors.BrightCyan, "[S+1-4]")}   Load sample");
+            lines.Add($"  {TUIColors.Fg(TUIColors.BrightCyan, "[R]")}       Reset code");
+            lines.Add($"  {TUIColors.Fg(TUIColors.BrightCyan, "[+/-]")}     Time scale");
+            lines.Add($"  {TUIColors.Fg(TUIColors.BrightCyan, "[SPACE]")}   Pause");
+            lines.Add($"  {TUIColors.Fg(TUIColors.BrightCyan, "[W]")}       Warp 10");
+            lines.Add("");
+
+            // ── Quality ────────────────────
+            string tierName = ((QualityTier)SettingsBridge.QualityLevel).ToString();
+            lines.Add($" {TUIColors.Bold("QUALITY")}");
+            lines.Add($"  {TUIColors.Fg(TUIColors.BrightGreen, tierName)}");
+            lines.Add($"  {TUIColors.Fg(TUIColors.BrightCyan, "[Q]")}       Cycle quality");
+            lines.Add("");
+
+            // ── Audio ──────────────────────
+            lines.Add($" {TUIColors.Bold("AUDIO")}");
+            lines.Add($"  Master: {VolumeBar(SettingsBridge.MasterVolume)}");
+            lines.Add($"  Music:  {VolumeBar(SettingsBridge.MusicVolume)}");
+            lines.Add($"  SFX:    {VolumeBar(SettingsBridge.SfxVolume)}");
+            lines.Add($"  {TUIColors.Fg(TUIColors.BrightCyan, "[F5]")}  Master  {TUIColors.Fg(TUIColors.BrightCyan, "[S+F5]")} -");
+            lines.Add($"  {TUIColors.Fg(TUIColors.BrightCyan, "[F6]")}  Music   {TUIColors.Fg(TUIColors.BrightCyan, "[S+F6]")} -");
+            lines.Add($"  {TUIColors.Fg(TUIColors.BrightCyan, "[F7]")}  SFX     {TUIColors.Fg(TUIColors.BrightCyan, "[S+F7]")} -");
+            lines.Add("");
+
+            // ── Display ────────────────────
+            lines.Add($" {TUIColors.Bold("DISPLAY")}");
+            lines.Add($"  Font: {TUIColors.Fg(TUIColors.BrightGreen, $"{SettingsBridge.FontSize:F0}pt")}");
+            lines.Add($"  {TUIColors.Fg(TUIColors.BrightCyan, "[]]")}  Font+   {TUIColors.Fg(TUIColors.BrightCyan, "[[]")}  Font-");
+
+            return lines.ToArray();
+        }
+
+        /// <summary>Render a 10-char volume bar: [██████░░░░] 60%</summary>
+        private static string VolumeBar(float vol)
+        {
+            int filled = Mathf.RoundToInt(vol * 10);
+            string bar = new string('█', filled) + new string('░', 10 - filled);
+            string pct = $"{vol * 100:F0}%";
+            return $"[{TUIColors.Fg(TUIColors.BrightGreen, bar)}] {TUIColors.Dimmed(pct)}";
         }
     }
 }

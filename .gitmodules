@@ -1,6 +1,3 @@
-[submodule "Pong/Assets/.engine"]
-	path = Pong/Assets/.engine
-	url = https://github.com/CodeGamified/.engine.git
 [submodule "Pong/Assets/engine"]
 	path = Pong/Assets/engine
 	url = https://github.com/CodeGamified/.engine.git
