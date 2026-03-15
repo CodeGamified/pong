@@ -124,13 +124,12 @@ namespace Pong.UI
                 int i = ((offset + j) % total + total) % total;
                 var inst = instructions[i];
                 bool isPC = (i == pc);
-                string ptr = isPC ? TUIColors.Fg(TUIColors.BrightGreen, "►") : " ";
                 string addr = TUIColors.Dimmed($"{i:X3}");
                 string asm = inst.ToAssembly(FormatPongOp);
                 string text = isPC
                     ? TUIColors.Fg(TUIColors.BrightCyan, asm)
                     : asm;
-                lines.Add($"{ptr}{addr} {text}");
+                lines.Add($" {addr} {text}");
             }
             return lines;
         }

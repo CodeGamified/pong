@@ -89,9 +89,12 @@ namespace Pong.Game
             _currentLineColor = GoldHDR;
 
             // Shared material — vertex colors drive the color per-segment
-            var shader = Shader.Find("Universal Render Pipeline/Unlit")
-                ?? Shader.Find("Unlit/Color");
+            var shader = Shader.Find("Universal Render Pipeline/Particles/Unlit")
+                ?? Shader.Find("Particles/Standard Unlit")
+                ?? Shader.Find("Universal Render Pipeline/Unlit");
             _lineMaterial = new Material(shader);
+            _lineMaterial.SetFloat("_Surface", 0); // Opaque
+            _lineMaterial.SetColor("_BaseColor", Color.white);
 
             // Start first segment in gold
             StartNewSegment(GoldHDR);
@@ -282,6 +285,12 @@ namespace Pong.Game
         {
             // Snapshot the segments to fade — new segment starts immediately for the next rally
             var fadingLRs = new List<LineRenderer>(_lineSegments);
+            var originalColors = new List<GradientColorKey[]>(fadingLRs.Count);
+            for (int i = 0; i < fadingLRs.Count; i++)
+                originalColors.Add(fadingLRs[i] != null
+                    ? fadingLRs[i].colorGradient.colorKeys
+                    : null);
+
             _lineSegments.Clear();
             _segmentPoints.Clear();
             _currentLineColor = GoldHDR;
@@ -291,13 +300,19 @@ namespace Pong.Game
             while (elapsed < FADE_DURATION)
             {
                 elapsed += Time.deltaTime;
-                float alpha = Mathf.Lerp(1f, 0f, elapsed / FADE_DURATION);
+                float t = elapsed / FADE_DURATION;
                 for (int i = 0; i < fadingLRs.Count; i++)
                 {
-                    if (fadingLRs[i] == null) continue;
+                    if (fadingLRs[i] == null || originalColors[i] == null) continue;
                     var grad = fadingLRs[i].colorGradient;
-                    var alphaKeys = new[] { new GradientAlphaKey(alpha * 0.7f, 0f), new GradientAlphaKey(alpha, 1f) };
-                    grad.alphaKeys = alphaKeys;
+                    // Fade color keys toward black — opaque material ignores alpha
+                    var origKeys = originalColors[i];
+                    var colorKeys = new GradientColorKey[origKeys.Length];
+                    for (int k = 0; k < origKeys.Length; k++)
+                        colorKeys[k] = new GradientColorKey(
+                            Color.Lerp(origKeys[k].color, Color.black, t),
+                            origKeys[k].time);
+                    grad.colorKeys = colorKeys;
                     fadingLRs[i].colorGradient = grad;
                 }
                 yield return null;
@@ -322,7 +337,7 @@ namespace Pong.Game
             float scale = Mathf.Lerp(0.1f, 0.25f, Mathf.Clamp01(speedRatio));
             part.localScale = Vector3.one * scale;
 
-            SetAlpha(_writeIndex, 0.6f);
+            ResetColor(_writeIndex);
             _writeIndex = (_writeIndex + 1) % _trailLength;
         }
 
@@ -337,8 +352,9 @@ namespace Pong.Game
                     ? r.material.GetColor("_BaseColor")
                     : r.material.color;
 
-                c.a -= Time.deltaTime * 3f;
-                if (c.a <= 0f)
+                // Fade to black — opaque URP shaders ignore alpha
+                c = Color.Lerp(c, Color.black, Time.deltaTime * 5f);
+                if (c.maxColorComponent <= 0.01f)
                 {
                     _trailParts[i].gameObject.SetActive(false);
                 }
@@ -354,13 +370,12 @@ namespace Pong.Game
             }
         }
 
-        private void SetAlpha(int index, float alpha)
+        private void ResetColor(int index)
         {
             var r = _trailRenderers[index];
-            Color c = r.material.HasProperty("_BaseColor")
-                ? r.material.GetColor("_BaseColor")
-                : r.material.color;
-            c.a = alpha;
+            Color c = _trailMaterial.HasProperty("_BaseColor")
+                ? _trailMaterial.GetColor("_BaseColor")
+                : _trailMaterial.color;
             if (r.material.HasProperty("_BaseColor"))
                 r.material.SetColor("_BaseColor", c);
             else
