@@ -1,5 +1,6 @@
 // Copyright CodeGamified 2025-2026
 // MIT License — Pong: Hello World
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -12,20 +13,19 @@ using Pong.Scripting;
 namespace Pong.UI
 {
     /// <summary>
-    /// TUI Manager for Pong — two draggable debugger windows + 3-column status bar.
-    /// Powered by .engine's CodeDebuggerWindow + TUIEdgeDragger.
+    /// TUI Manager for Pong — unified code debugger panels with intra-panel
+    /// column draggers, plus a unified 7-column status panel at the bottom.
     ///
-    /// Layout (all edges draggable):
-    ///   ┌─────────────────────┬─────────────────────┐
-    ///   │ YOUR CODE           │ AI CODE             │
-    ///   │ PY │ MACHINE │ REGS │ PY │ MACHINE │ INFO │
-    ///   │    │         │      │    │         │      │
-    ///   ├──────────┼──────────┼──────────────────────┤
-    ///   │ SCRIPTS  │ ██ PONG  │ CONTROLS            │
-    ///   │ YOU / AI │  5 — 3   │ [1-4] AI difficulty  │
-    ///   │ (panel)  │ (panel)  │ (panel)             │
-    ///   └──────────┴──────────┴──────────────────────┘
-    ///   Left/right status column dividers linked to code panels above.
+    /// Layout (left/right independent, middle 34% is game view):
+    ///   ┌────────────────────────────┐                ┌────────────────────────────┐
+    ///   │ YOUR CODE                  │   GAME VIEW    │ AI CODE                    │
+    ///   │ SOURCE ┆ MACHINE ┆ STATE   │   (34% open)   │ SOURCE ┆ MACHINE ┆ STATE   │
+    ///   ├────────────────────────────┴────────────────┴────────────────────────────┤
+    ///   │ SCRIPT ┆ AI ┆ MATCH ┆ PONG ┆ CONTROLS ┆ SETTINGS ┆ AUDIO              │
+    ///   └─────────────────────────────────────────────────────────────────────────┘
+    ///   All column dividers (┆) are draggable.
+    ///   MATCH┆PONG and PONG┆CONTROLS draggers are stickied to the
+    ///   debug panel edge draggers (player right edge and AI left edge).
     /// </summary>
     public class PongTUIManager : MonoBehaviour, ISettingsListener
     {
@@ -39,23 +39,26 @@ namespace Pong.UI
         private Canvas _canvas;
         private RectTransform _canvasRect;
 
-        // Panels
+        // Debugger panels (unified, one per side)
         private PongCodeDebugger _playerDebugger;
         private PongCodeDebugger _aiDebugger;
-        private PongStatusLeft _statusLeft;
-        private PongStatusCenter _statusCenter;
-        private PongStatusRight _statusRight;
+        private RectTransform _playerDebuggerRect;
+        private RectTransform _aiDebuggerRect;
 
-        // Panel rects
-        private RectTransform _leftPanelRect;
-        private RectTransform _rightPanelRect;
-        private RectTransform _statusLeftRect;
-        private RectTransform _statusCenterRect;
-        private RectTransform _statusRightRect;
+        // Status panel (unified, bottom)
+        private PongStatusPanel _statusPanel;
+        private RectTransform _statusPanelRect;
+
+        // Edge draggers for cross-type linking
+        private TUIEdgeDragger _playerRightEdge;
+        private TUIEdgeDragger _aiLeftEdge;
 
         // Font
         private TMP_FontAsset _font;
         private float _fontSize;
+
+        // All panel rects for bulk cleanup
+        private RectTransform[] _allPanelRects;
 
         public void Initialize(PongMatchManager match, PaddleProgram program,
                                PongLeaderboard leaderboard, PongAIController ai)
@@ -84,17 +87,12 @@ namespace Pong.UI
 
         private void RebuildPanels()
         {
-            // Destroy existing panels and rebuild with new font size
-            if (_leftPanelRect != null) Destroy(_leftPanelRect.gameObject);
-            if (_rightPanelRect != null) Destroy(_rightPanelRect.gameObject);
-            if (_statusLeftRect != null) Destroy(_statusLeftRect.gameObject);
-            if (_statusCenterRect != null) Destroy(_statusCenterRect.gameObject);
-            if (_statusRightRect != null) Destroy(_statusRightRect.gameObject);
-            _playerDebugger = null;
-            _aiDebugger = null;
-            _statusLeft = null;
-            _statusCenter = null;
-            _statusRight = null;
+            if (_allPanelRects != null)
+                foreach (var rt in _allPanelRects)
+                    if (rt != null) Destroy(rt.gameObject);
+
+            _playerDebugger = null; _aiDebugger = null;
+            _statusPanel = null;
 
             BuildPanels();
         }
@@ -109,8 +107,10 @@ namespace Pong.UI
             canvasGO.transform.SetParent(transform, false);
 
             _canvas = canvasGO.AddComponent<Canvas>();
-            _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            _canvas.renderMode = RenderMode.ScreenSpaceCamera;
+            _canvas.worldCamera = Camera.main;
             _canvas.sortingOrder = 100;
+            _canvas.planeDistance = 1f;
 
             var scaler = canvasGO.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
@@ -120,7 +120,6 @@ namespace Pong.UI
             canvasGO.AddComponent<GraphicRaycaster>();
             _canvasRect = canvasGO.GetComponent<RectTransform>();
 
-            // Ensure EventSystem exists
             if (FindAnyObjectByType<UnityEngine.EventSystems.EventSystem>() == null)
             {
                 var esGO = new GameObject("EventSystem");
@@ -135,113 +134,178 @@ namespace Pong.UI
 
         private void BuildPanels()
         {
-            // ── Left panel: Player's code debugger ──
-            _leftPanelRect = CreatePanel("PlayerPanel",
-                new Vector2(0f, 0.25f),
-                new Vector2(0.25f, 1f));
+            const float statusH = 0.25f;
+            const float pLeft  = 0f;
+            const float pRight = 0.33f;
+            const float aLeft  = 0.67f;
+            const float aRight = 1.0f;
 
-            _playerDebugger = _leftPanelRect.gameObject.AddComponent<PongCodeDebugger>();
-            AddPanelBackground(_leftPanelRect);
+            // ── Player debugger (unified three-column panel) ──
+            _playerDebuggerRect = CreatePanel("P_Debugger",
+                new Vector2(pLeft, statusH), new Vector2(pRight, 1f));
+            _playerDebugger = _playerDebuggerRect.gameObject.AddComponent<PongCodeDebugger>();
+            AddPanelBackground(_playerDebuggerRect);
             _playerDebugger.InitializeProgrammatic(GetFont(), _fontSize,
-                _leftPanelRect.GetComponent<Image>());
+                _playerDebuggerRect.GetComponent<Image>());
             _playerDebugger.SetTitle("YOUR CODE");
             _playerDebugger.Bind(_playerProgram);
 
-            // Draggers: right edge + bottom edge
-            var leftRight = TUIEdgeDragger.Create(_leftPanelRect, _canvasRect, TUIEdgeDragger.Edge.Right);
-            var leftBottom = TUIEdgeDragger.Create(_leftPanelRect, _canvasRect, TUIEdgeDragger.Edge.Bottom);
-
-            // ── Right panel: AI code debugger ──
-            _rightPanelRect = CreatePanel("AIPanel",
-                new Vector2(0.75f, 0.25f),
-                new Vector2(1f, 1f));
-
-            _aiDebugger = _rightPanelRect.gameObject.AddComponent<PongCodeDebugger>();
-            AddPanelBackground(_rightPanelRect);
+            // ── AI debugger (unified three-column panel) ──
+            _aiDebuggerRect = CreatePanel("AI_Debugger",
+                new Vector2(aLeft, statusH), new Vector2(aRight, 1f));
+            _aiDebugger = _aiDebuggerRect.gameObject.AddComponent<PongCodeDebugger>();
+            AddPanelBackground(_aiDebuggerRect);
             _aiDebugger.InitializeProgrammatic(GetFont(), _fontSize,
-                _rightPanelRect.GetComponent<Image>());
+                _aiDebuggerRect.GetComponent<Image>());
             _aiDebugger.SetTitle("AI CODE");
             _aiDebugger.Bind(_ai.Program);
 
-            // Draggers: left edge + bottom edge
-            var rightLeft = TUIEdgeDragger.Create(_rightPanelRect, _canvasRect, TUIEdgeDragger.Edge.Left);
-            var rightBottom = TUIEdgeDragger.Create(_rightPanelRect, _canvasRect, TUIEdgeDragger.Edge.Bottom);
+            // ── Status Panel (unified 6-column) ──
+            _statusPanelRect = CreatePanel("StatusPanel",
+                new Vector2(0f, 0f), new Vector2(1f, statusH));
+            _statusPanel = _statusPanelRect.gameObject.AddComponent<PongStatusPanel>();
+            AddPanelBackground(_statusPanelRect);
+            _statusPanel.InitializeProgrammatic(GetFont(), _fontSize - 1f,
+                _statusPanelRect.GetComponent<Image>());
+            _statusPanel.Bind(_match, _playerProgram, _ai);
 
-            // ── Left status panel (bottom-left, aligned with player code) ──
-            _statusLeftRect = CreatePanel("StatusLeft",
-                new Vector2(0f, 0f),
-                new Vector2(0.25f, 0.25f));
+            // Track all for teardown
+            _allPanelRects = new[]
+            {
+                _playerDebuggerRect, _aiDebuggerRect,
+                _statusPanelRect
+            };
 
-            _statusLeft = _statusLeftRect.gameObject.AddComponent<PongStatusLeft>();
-            AddPanelBackground(_statusLeftRect);
-            _statusLeft.InitializeProgrammatic(GetFont(), _fontSize - 1f,
-                _statusLeftRect.GetComponent<Image>());
-            _statusLeft.Bind(_match, _playerProgram, _ai);
+            LinkEdges();
+            StartCoroutine(LinkColumnDraggers());
+        }
 
-            var statusLeftRight = TUIEdgeDragger.Create(_statusLeftRect, _canvasRect, TUIEdgeDragger.Edge.Right);
-            var statusLeftTop = TUIEdgeDragger.Create(_statusLeftRect, _canvasRect, TUIEdgeDragger.Edge.Top);
+        // ═══════════════════════════════════════════════════════════════
+        // EDGE LINKING
+        // ═══════════════════════════════════════════════════════════════
 
-            // ── Center status panel (bottom-center, PONG ASCII + scores) ──
-            _statusCenterRect = CreatePanel("StatusCenter",
-                new Vector2(0.25f, 0f),
-                new Vector2(0.75f, 0.25f));
+        /// <summary>
+        /// Link column draggers between the status panel and debugger panels
+        /// so they stay aligned at the same screen X when dragged.
+        /// Deferred until layouts are ready and draggers exist.
+        /// </summary>
+        private IEnumerator LinkColumnDraggers()
+        {
+            yield return new WaitForEndOfFrame();
+            yield return new WaitForEndOfFrame();
 
-            _statusCenter = _statusCenterRect.gameObject.AddComponent<PongStatusCenter>();
-            AddPanelBackground(_statusCenterRect);
-            _statusCenter.InitializeProgrammatic(GetFont(), _fontSize - 1f,
-                _statusCenterRect.GetComponent<Image>());
-            _statusCenter.Bind(_match, _leaderboard);
+            // Status panel draggers: 0=YOU|AI, 1=AI|MATCH, 2=MATCH|PONG,
+            //   3=PONG|CONTROLS, 4=CONTROLS|SETTINGS, 5=SETTINGS|AUDIO
+            // Debugger draggers: 0=SOURCE|MACHINE, 1=MACHINE|STATE
+            LinkDraggerPair(_statusPanel, 0, _playerDebugger, 0);
+            LinkDraggerPair(_statusPanel, 1, _playerDebugger, 1);
+            LinkDraggerPair(_statusPanel, 4, _aiDebugger, 0);
+            LinkDraggerPair(_statusPanel, 5, _aiDebugger, 1);
 
-            var statusCenterTop = TUIEdgeDragger.Create(_statusCenterRect, _canvasRect, TUIEdgeDragger.Edge.Top);
+            // Cross-type linking: status column draggers 2,3 ↔ debug panel edges
+            LinkColumnToEdge(_statusPanel, 2, _playerRightEdge);
+            LinkColumnToEdge(_statusPanel, 3, _aiLeftEdge);
+        }
 
-            // ── Right status panel (bottom-right, aligned with AI code) ──
-            _statusRightRect = CreatePanel("StatusRight",
-                new Vector2(0.75f, 0f),
-                new Vector2(1f, 0.25f));
+        private static void LinkDraggerPair(TerminalWindow a, int aIdx, TerminalWindow b, int bIdx)
+        {
+            var da = a?.GetColumnDragger(aIdx);
+            var db = b?.GetColumnDragger(bIdx);
+            if (da != null && db != null) da.LinkDragger(db);
+        }
 
-            _statusRight = _statusRightRect.gameObject.AddComponent<PongStatusRight>();
-            AddPanelBackground(_statusRightRect);
-            _statusRight.InitializeProgrammatic(GetFont(), _fontSize - 1f,
-                _statusRightRect.GetComponent<Image>());
+        /// <summary>
+        /// Bidirectional link between a status panel column dragger and a
+        /// debug panel edge dragger. Dragging either one moves the other.
+        /// </summary>
+        private void LinkColumnToEdge(TerminalWindow panel, int colIdx, TUIEdgeDragger edgeDragger)
+        {
+            var colDragger = panel?.GetColumnDragger(colIdx);
+            if (colDragger == null || edgeDragger == null) return;
 
-            var statusRightLeft = TUIEdgeDragger.Create(_statusRightRect, _canvasRect, TUIEdgeDragger.Edge.Left);
-            var statusRightTop = TUIEdgeDragger.Create(_statusRightRect, _canvasRect, TUIEdgeDragger.Edge.Top);
+            var statusRect = panel.GetComponent<RectTransform>();
+            if (statusRect == null) return;
 
-            // ── Link vertical edges: code panels ↔ status panels ──
-            // Left code right edge → left status right + center status left
-            leftRight.LinkEdge(_statusLeftRect, TUIEdgeDragger.Edge.Right)
-                     .LinkEdge(_statusCenterRect, TUIEdgeDragger.Edge.Left);
-            // Left status right edge → left code right + center status left
-            statusLeftRight.LinkEdge(_leftPanelRect, TUIEdgeDragger.Edge.Right)
-                           .LinkEdge(_statusCenterRect, TUIEdgeDragger.Edge.Left);
-            // Right code left edge → right status left + center status right
-            rightLeft.LinkEdge(_statusRightRect, TUIEdgeDragger.Edge.Left)
-                     .LinkEdge(_statusCenterRect, TUIEdgeDragger.Edge.Right);
-            // Right status left edge → right code left + center status right
-            statusRightLeft.LinkEdge(_rightPanelRect, TUIEdgeDragger.Edge.Left)
-                           .LinkEdge(_statusCenterRect, TUIEdgeDragger.Edge.Right);
+            bool syncing = false;
 
-            // ── Link horizontal edges: all status tops ↔ code bottoms ──
-            statusLeftTop.LinkEdge(_statusCenterRect, TUIEdgeDragger.Edge.Top)
-                         .LinkEdge(_statusRightRect, TUIEdgeDragger.Edge.Top)
-                         .LinkEdge(_leftPanelRect, TUIEdgeDragger.Edge.Bottom)
-                         .LinkEdge(_rightPanelRect, TUIEdgeDragger.Edge.Bottom);
-            statusCenterTop.LinkEdge(_statusLeftRect, TUIEdgeDragger.Edge.Top)
-                           .LinkEdge(_statusRightRect, TUIEdgeDragger.Edge.Top)
-                           .LinkEdge(_leftPanelRect, TUIEdgeDragger.Edge.Bottom)
-                           .LinkEdge(_rightPanelRect, TUIEdgeDragger.Edge.Bottom);
-            statusRightTop.LinkEdge(_statusLeftRect, TUIEdgeDragger.Edge.Top)
-                          .LinkEdge(_statusCenterRect, TUIEdgeDragger.Edge.Top)
-                          .LinkEdge(_leftPanelRect, TUIEdgeDragger.Edge.Bottom)
-                          .LinkEdge(_rightPanelRect, TUIEdgeDragger.Edge.Bottom);
-            leftBottom.LinkEdge(_statusLeftRect, TUIEdgeDragger.Edge.Top)
-                      .LinkEdge(_statusCenterRect, TUIEdgeDragger.Edge.Top)
-                      .LinkEdge(_statusRightRect, TUIEdgeDragger.Edge.Top)
-                      .LinkEdge(_rightPanelRect, TUIEdgeDragger.Edge.Bottom);
-            rightBottom.LinkEdge(_statusLeftRect, TUIEdgeDragger.Edge.Top)
-                       .LinkEdge(_statusCenterRect, TUIEdgeDragger.Edge.Top)
-                       .LinkEdge(_statusRightRect, TUIEdgeDragger.Edge.Top)
-                       .LinkEdge(_leftPanelRect, TUIEdgeDragger.Edge.Bottom);
+            // Edge dragged → update column dragger position
+            edgeDragger.OnDragged = anchorValue =>
+            {
+                if (syncing) return;
+                syncing = true;
+
+                float canvasW = _canvasRect.rect.width;
+                float statusLeft = statusRect.anchorMin.x * canvasW;
+                float statusWidth = (statusRect.anchorMax.x - statusRect.anchorMin.x) * canvasW;
+                if (statusWidth <= 0) { syncing = false; return; }
+
+                float edgeX = anchorValue * canvasW;
+                float localX = edgeX - statusLeft;
+                float cw = colDragger.CharWidth;
+                if (cw <= 0) { syncing = false; return; }
+
+                int charPos = Mathf.RoundToInt(localX / cw);
+                colDragger.SetPositionWithNotify(charPos);
+
+                syncing = false;
+            };
+
+            // Column dragged → update edge anchor position
+            colDragger.ExternalCallback = charPos =>
+            {
+                if (syncing) return;
+                syncing = true;
+
+                float cw = colDragger.CharWidth;
+                float canvasW = _canvasRect.rect.width;
+                float statusLeft = statusRect.anchorMin.x * canvasW;
+                float edgeX = statusLeft + charPos * cw;
+                float anchorValue = edgeX / canvasW;
+
+                // Update the edge dragger's target rect anchor
+                var tgt = edgeDragger.TargetRect;
+                Vector2 aMin = tgt.anchorMin;
+                Vector2 aMax = tgt.anchorMax;
+                if (edgeDragger.DragEdge == TUIEdgeDragger.Edge.Right)
+                    aMax.x = Mathf.Clamp(anchorValue, aMin.x + 0.05f, 1f);
+                else if (edgeDragger.DragEdge == TUIEdgeDragger.Edge.Left)
+                    aMin.x = Mathf.Clamp(anchorValue, 0f, aMax.x - 0.05f);
+                tgt.anchorMin = aMin;
+                tgt.anchorMax = aMax;
+
+                syncing = false;
+            };
+        }
+
+        private void LinkEdges()
+        {
+            // ── Player right edge → expand into game-view zone ──
+            _playerRightEdge = TUIEdgeDragger.Create(_playerDebuggerRect, _canvasRect, TUIEdgeDragger.Edge.Right);
+
+            // ── AI left edge → expand into game-view zone ──
+            _aiLeftEdge = TUIEdgeDragger.Create(_aiDebuggerRect, _canvasRect, TUIEdgeDragger.Edge.Left);
+
+            // ── Horizontal: debugger bottoms + status top move together ──
+            var pBottom    = TUIEdgeDragger.Create(_playerDebuggerRect, _canvasRect, TUIEdgeDragger.Edge.Bottom);
+            var aBottom    = TUIEdgeDragger.Create(_aiDebuggerRect,     _canvasRect, TUIEdgeDragger.Edge.Bottom);
+            var statusTop  = TUIEdgeDragger.Create(_statusPanelRect,    _canvasRect, TUIEdgeDragger.Edge.Top);
+
+            var allHDraggers = new[]
+            {
+                (pBottom,   _playerDebuggerRect),
+                (aBottom,   _aiDebuggerRect),
+                (statusTop, _statusPanelRect),
+            };
+            var allHTargets = new[]
+            {
+                (_playerDebuggerRect, TUIEdgeDragger.Edge.Bottom),
+                (_aiDebuggerRect,     TUIEdgeDragger.Edge.Bottom),
+                (_statusPanelRect,    TUIEdgeDragger.Edge.Top),
+            };
+            foreach (var (dragger, ownerRect) in allHDraggers)
+                foreach (var (tgtRect, tgtEdge) in allHTargets)
+                    if (tgtRect != ownerRect)
+                        dragger.LinkEdge(tgtRect, tgtEdge);
         }
 
         // ═══════════════════════════════════════════════════════════════
@@ -267,7 +331,7 @@ namespace Pong.UI
             var img = panel.gameObject.GetComponent<Image>();
             if (img == null)
                 img = panel.gameObject.AddComponent<Image>();
-            img.color = new Color(0.01f, 0.03f, 0.06f, 0.92f);
+            img.color = new Color(0, 0, 0, 0.5f);
             img.raycastTarget = true;
         }
 

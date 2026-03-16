@@ -9,7 +9,7 @@ namespace Pong.Core
     /// <summary>
     /// Warp controller for Pong — "warp to match N" for batch testing.
     /// Estimates sim-time per match and warps forward to skip N matches.
-    /// Press [W] in-game to warp 10 matches ahead.
+    /// Press [F5] in-game to warp 10 matches ahead.
     /// </summary>
     public class PongWarpController : TimeWarpController
     {
@@ -72,8 +72,8 @@ namespace Pong.Core
         {
             base.Update();
 
-            // [W] key to warp 10 matches ahead
-            if (!IsWarping && Input.GetKeyDown(KeyCode.W))
+            // [F5] key to warp 10 matches ahead
+            if (!IsWarping && Input.GetKeyDown(KeyCode.F5))
                 WarpMatches(10);
 
             // [Escape] to cancel warp

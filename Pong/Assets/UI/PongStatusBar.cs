@@ -204,6 +204,7 @@ namespace Pong.UI
             {
                 int next = (SettingsBridge.QualityLevel + 1) % 4;
                 SettingsBridge.SetQualityLevel(next);
+                QualityBridge.SetTier((QualityTier)next);
                 Debug.Log($"[Menu] Quality → {(QualityTier)next}");
             }
 
@@ -258,10 +259,7 @@ namespace Pong.UI
 
             if (!IsExpanded) return;
 
-            // Row 1 — separator
-            SetRow(1, Separator());
-
-            // Rows 2+ — three-column expanded layout
+            // Rows 1+ — three-column expanded layout
             RenderExpandedLayout();
         }
 
@@ -314,11 +312,11 @@ namespace Pong.UI
             int maxLines = Mathf.Max(left.Length, Mathf.Max(center.Length, right.Length));
 
             // Cache char pixel width for <mspace> tag (forces █ and space to same advance)
-            if (rows.Count > 2) _charPx = rows[2].CharWidth;
+            if (rows.Count > 1) _charPx = rows[1].CharWidth;
 
             for (int i = 0; i < maxLines; i++)
             {
-                int r = i + 2; // offset past row 0 (status) and row 1 (separator)
+                int r = i + 1; // offset past row 0 (status)
                 if (r >= totalRows) break;
 
                 rows[r].SetTripleColumnMode(true, 6f);
@@ -338,7 +336,7 @@ namespace Pong.UI
             var lines = new System.Collections.Generic.List<string>();
 
             // Header
-            lines.Add($" {TUIColors.Fg(TUIColors.BrightCyan, TUIGlyphs.DiamondFilled)} {TUIColors.Bold("YOUR SCRIPT")}");
+            lines.Add($" {TUIColors.Fg(TUIColors.BrightCyan, TUIGlyphs.DiamondFilled)} {TUIColors.Bold("YOU")}");
 
             if (_playerProgram != null)
             {
@@ -374,7 +372,7 @@ namespace Pong.UI
             lines.Add("");
 
             // AI section
-            lines.Add($" {TUIColors.Fg(TUIColors.BrightMagenta, TUIGlyphs.DiamondFilled)} {TUIColors.Bold("AI OPPONENT")}");
+            lines.Add($" {TUIColors.Fg(TUIColors.BrightMagenta, TUIGlyphs.DiamondFilled)} {TUIColors.Bold("OPPONENT")}");
             string aiDiff = _ai != null ? _ai.Difficulty.ToString() : "?";
             lines.Add($"  Difficulty: {TUIColors.Fg(TUIColors.BrightYellow, aiDiff)}");
 
@@ -618,7 +616,7 @@ namespace Pong.UI
             lines.Add($"  {TUIColors.Fg(TUIColors.BrightCyan, "[R]")}       Reset code");
             lines.Add($"  {TUIColors.Fg(TUIColors.BrightCyan, "[+/-]")}     Time scale");
             lines.Add($"  {TUIColors.Fg(TUIColors.BrightCyan, "[SPACE]")}   Pause");
-            lines.Add($"  {TUIColors.Fg(TUIColors.BrightCyan, "[W]")}       Warp 10");
+            lines.Add($"  {TUIColors.Fg(TUIColors.BrightCyan, "[F5]")}      Warp 10");
             lines.Add("");
 
             // ── Quality ────────────────────

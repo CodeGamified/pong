@@ -32,7 +32,7 @@ namespace Pong.Game
         private bool _lineMode;
         private Color _currentLineColor;
         private Material _lineMaterial;
-        private static readonly Color GoldHDR = new Color(2f, 1.6f, 0.2f);
+        private static readonly Color GoldHDR = new Color(3f, 2.4f, 0.3f);
 
         // Fade-out state (line mode)
         private Coroutine _fadeCoroutine;
@@ -219,12 +219,18 @@ namespace Pong.Game
             lr.numCornerVertices = 2;
             lr.numCapVertices = 2;
             lr.material = new Material(_lineMaterial);
+            lr.material.SetColor("_BaseColor", hdrColor);
+            if (lr.material.HasProperty("_EmissionColor"))
+            {
+                lr.material.EnableKeyword("_EMISSION");
+                lr.material.SetColor("_EmissionColor", hdrColor);
+            }
 
-            // Solid color gradient for this segment
+            // Gradient drives alpha only — HDR color lives in the material
             var grad = new Gradient();
             grad.SetKeys(
-                new[] { new GradientColorKey(hdrColor, 0f), new GradientColorKey(hdrColor, 1f) },
-                new[] { new GradientAlphaKey(0.7f, 0f), new GradientAlphaKey(1f, 1f) }
+                new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+                new[] { new GradientAlphaKey(0.5f, 0f), new GradientAlphaKey(1f, 1f) }
             );
             lr.colorGradient = grad;
 
@@ -285,11 +291,11 @@ namespace Pong.Game
         {
             // Snapshot the segments to fade — new segment starts immediately for the next rally
             var fadingLRs = new List<LineRenderer>(_lineSegments);
-            var originalColors = new List<GradientColorKey[]>(fadingLRs.Count);
+            var originalBaseColors = new List<Color>(fadingLRs.Count);
             for (int i = 0; i < fadingLRs.Count; i++)
-                originalColors.Add(fadingLRs[i] != null
-                    ? fadingLRs[i].colorGradient.colorKeys
-                    : null);
+                originalBaseColors.Add(fadingLRs[i] != null && fadingLRs[i].material.HasProperty("_BaseColor")
+                    ? fadingLRs[i].material.GetColor("_BaseColor")
+                    : Color.white);
 
             _lineSegments.Clear();
             _segmentPoints.Clear();
@@ -303,17 +309,13 @@ namespace Pong.Game
                 float t = elapsed / FADE_DURATION;
                 for (int i = 0; i < fadingLRs.Count; i++)
                 {
-                    if (fadingLRs[i] == null || originalColors[i] == null) continue;
-                    var grad = fadingLRs[i].colorGradient;
-                    // Fade color keys toward black — opaque material ignores alpha
-                    var origKeys = originalColors[i];
-                    var colorKeys = new GradientColorKey[origKeys.Length];
-                    for (int k = 0; k < origKeys.Length; k++)
-                        colorKeys[k] = new GradientColorKey(
-                            Color.Lerp(origKeys[k].color, Color.black, t),
-                            origKeys[k].time);
-                    grad.colorKeys = colorKeys;
-                    fadingLRs[i].colorGradient = grad;
+                    if (fadingLRs[i] == null) continue;
+                    var mat = fadingLRs[i].material;
+                    Color faded = Color.Lerp(originalBaseColors[i], Color.black, t);
+                    if (mat.HasProperty("_BaseColor"))
+                        mat.SetColor("_BaseColor", faded);
+                    if (mat.HasProperty("_EmissionColor"))
+                        mat.SetColor("_EmissionColor", faded);
                 }
                 yield return null;
             }

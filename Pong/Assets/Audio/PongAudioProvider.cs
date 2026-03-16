@@ -81,6 +81,7 @@ namespace Pong.Audio
             }
             _musicSource.clip = clip;
             _musicSource.volume = SettingsBridge.MusicVolume * SettingsBridge.MasterVolume;
+            _musicSource.time = 47f;
             _musicSource.Play();
         }
 

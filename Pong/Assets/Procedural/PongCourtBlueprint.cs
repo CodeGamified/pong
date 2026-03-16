@@ -35,10 +35,10 @@ namespace Pong.Game
             float wallThickness = 0.3f;
             float depth = 0.5f;
 
-            // Floor — sits behind the play plane
+            // Floor — sits behind the play plane, oversized to fill camera on zoom-out
             parts.Add(new ProceduralPartDef("floor", PrimitiveType.Cube,
                 new Vector3(0f, 0f, depth),
-                new Vector3(_width + 2f, _height + 2f, 0.1f),
+                new Vector3(1000f, 1000f, 0.1f),
                 "court_floor"));
 
             // Top wall
@@ -53,19 +53,30 @@ namespace Pong.Game
                 new Vector3(_width + 2f, wallThickness, depth),
                 "wall") { Collider = ColliderMode.Box });
 
-            // Center dashed line (density-modulated)
-            float baseSpacing = 0.6f;
-            float spacing = baseSpacing / Mathf.Max(_dashDensity, 0.1f);
-            int segments = Mathf.Max(1, (int)(_height / spacing));
-            for (int i = 0; i < segments; i++)
+            // Center line — solid bar on Ultra, dashed on lower tiers
+            if (_dashDensity >= 100f)
             {
-                float y = -halfH + i * (_height / segments) + (_height / segments) / 2f;
-                if (i % 2 == 0)
+                // Single solid bar spanning the full court height
+                parts.Add(new ProceduralPartDef("center_line", PrimitiveType.Cube,
+                    new Vector3(0f, 0f, 0f),
+                    new Vector3(0.06f, _height, 0.15f),
+                    "court_line_solid"));
+            }
+            else
+            {
+                float baseSpacing = 0.6f;
+                float spacing = baseSpacing / Mathf.Max(_dashDensity, 0.1f);
+                int segments = Mathf.Max(1, (int)(_height / spacing));
+                for (int i = 0; i < segments; i++)
                 {
-                    parts.Add(new ProceduralPartDef($"dash_{i}", PrimitiveType.Cube,
-                        new Vector3(0f, y, 0f),
-                        new Vector3(0.12f, _height / segments * 0.6f, 0.15f),
-                        "court_line"));
+                    float y = -halfH + i * (_height / segments) + (_height / segments) / 2f;
+                    if (i % 2 == 0)
+                    {
+                        parts.Add(new ProceduralPartDef($"dash_{i}", PrimitiveType.Cube,
+                            new Vector3(0f, y, 0f),
+                            new Vector3(0.12f, _height / segments * 0.6f, 0.15f),
+                            "court_line"));
+                    }
                 }
             }
 

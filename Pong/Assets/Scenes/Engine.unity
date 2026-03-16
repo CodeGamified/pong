@@ -155,8 +155,8 @@ MonoBehaviour:
   paddleThickness: 0.3
   paddleOffset: 1
   ballRadius: 0.25
-  ballStartSpeed: 6
-  ballMaxSpeed: 20
+  ballStartSpeed: 2.5
+  ballMaxSpeed: 10
   ballSpeedIncrease: 0.5
   maxBounceAngle: 60
   pointsToWin: 11

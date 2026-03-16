@@ -3,6 +3,7 @@
 using CodeGamified.Engine;
 using CodeGamified.Time;
 using Pong.Game;
+using Pong.Scripting;
 using UnityEngine;
 
 namespace Pong.Scripting
@@ -70,11 +71,23 @@ namespace Pong.Scripting
                 case PongOpCode.GET_OPP_Y:
                     state.SetRegister(0, _opponent != null ? _opponent.currentY : 0f);
                     break;
+                case PongOpCode.GET_INPUT_Y:
+                    state.SetRegister(0, PongInputProvider.Instance != null
+                        ? PongInputProvider.Instance.VerticalInput : 0f);
+                    break;
+                case PongOpCode.GET_MOUSE_Y:
+                    state.SetRegister(0, PongInputProvider.Instance != null
+                        ? PongInputProvider.Instance.MouseWorldY : 0f);
+                    break;
 
                 // ── Orders ──
                 case PongOpCode.SET_TARGET_Y:
                     float targetY = state.Registers[0];
                     _paddle.SetTargetY(targetY);
+                    break;
+                case PongOpCode.MOVE_TARGET_Y:
+                    float delta = state.Registers[0];
+                    _paddle.SetTargetY(_paddle.targetY + delta);
                     break;
             }
         }

@@ -48,6 +48,16 @@ namespace Pong.Game
 
             if (Visual.Root != null)
                 Visual.Root.transform.SetParent(transform, false);
+
+            // Ultra: mild passive glow on center line
+            if (QualityBridge.CurrentTier == QualityTier.Ultra &&
+                Visual.Renderers != null &&
+                Visual.Renderers.TryGetValue("center_line", out var r))
+            {
+                var mat = r.material;
+                if (mat.HasProperty("_BaseColor"))
+                    mat.SetColor("_BaseColor", new Color(1.2f, 1.2f, 1.2f));
+            }
         }
     }
 }

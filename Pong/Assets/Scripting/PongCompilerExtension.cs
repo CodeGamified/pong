@@ -22,9 +22,16 @@ namespace Pong.Scripting
         GET_SCORE      = 6,  // CUSTOM_6
         GET_OPP_SCORE  = 7,  // CUSTOM_7
         GET_OPP_Y      = 8,  // CUSTOM_8
+        GET_INPUT_Y    = 9,  // CUSTOM_9
 
         // Orders (write to game state)
         SET_TARGET_Y   = 10, // CUSTOM_10
+
+        // More queries
+        GET_MOUSE_Y    = 11, // CUSTOM_11
+
+        // More orders
+        MOVE_TARGET_Y  = 12, // CUSTOM_12
     }
 
     /// <summary>
@@ -70,12 +77,23 @@ namespace Pong.Scripting
                 case "get_opponent_y":
                     ctx.Emit(OpCode.CUSTOM_0 + (int)PongOpCode.GET_OPP_Y, 0, 0, 0, sourceLine, "get_opponent_y → R0");
                     return true;
+                case "get_input_y":
+                    ctx.Emit(OpCode.CUSTOM_0 + (int)PongOpCode.GET_INPUT_Y, 0, 0, 0, sourceLine, "get_input_y → R0");
+                    return true;
+                case "get_mouse_y":
+                    ctx.Emit(OpCode.CUSTOM_0 + (int)PongOpCode.GET_MOUSE_Y, 0, 0, 0, sourceLine, "get_mouse_y → R0");
+                    return true;
 
                 // ── Orders: arg from R0 ──
                 case "set_target_y":
                     if (args != null && args.Count > 0)
                         args[0].Compile(ctx);  // Result in R0
                     ctx.Emit(OpCode.CUSTOM_0 + (int)PongOpCode.SET_TARGET_Y, 0, 0, 0, sourceLine, "set_target_y(R0)");
+                    return true;
+                case "move_target_y":
+                    if (args != null && args.Count > 0)
+                        args[0].Compile(ctx);  // Result in R0
+                    ctx.Emit(OpCode.CUSTOM_0 + (int)PongOpCode.MOVE_TARGET_Y, 0, 0, 0, sourceLine, "move_target_y(R0)");
                     return true;
 
                 default:

@@ -53,11 +53,23 @@ namespace Pong.Scripting
 #   get_ball_vx/vy()    → ball velocity
 #   get_paddle_x/y()    → your paddle
 #   get_opponent_y()    → opponent Y
+#   get_input_y()       → keyboard input (-1/0/1)
+#   get_mouse_y()       → mouse Y (world space)
 #   set_target_y(y)     → move to Y
+#   move_target_y(dy)   → nudge target by dy
 #
 # This 2-line script uses ~8 ops per pass:
 ball_y = get_ball_y()
 set_target_y(ball_y)
+";
+
+        public const string USER_CONTROLLED_CODE = @"# USER CONTROLLED — Keyboard input (~2 ops)
+# W/S or UpArrow/DownArrow to move.
+move_target_y(get_input_y())
+";
+
+        public const string MOUSE_CONTROLLED_CODE = @"# MOUSE CONTROLLED — Follow the mouse (~2 ops)
+set_target_y(get_mouse_y())
 ";
 
         public string CurrentSourceCode => _sourceCode;
