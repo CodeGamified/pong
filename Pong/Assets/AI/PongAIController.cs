@@ -96,8 +96,7 @@ hit_opp:
     m = (get_ball_y() + get_ball_vy() *
         (get_paddle_x() - get_ball_x())
         / get_ball_vx() + get_court_height() / 2) % (get_court_height() * 2)
-    predict = min(m, get_court_height() * 2 - m) - get_court_height() / 2
-    set_target_y(predict + get_opponent_y() * 0.3)";
+    set_target_y(min(m, get_court_height() * 2 - m) - get_court_height() / 2 + get_opponent_y() * 0.1)";
                 default:
                     return "# Unknown difficulty";
             }

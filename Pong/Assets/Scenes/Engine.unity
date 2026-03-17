@@ -155,13 +155,13 @@ MonoBehaviour:
   paddleThickness: 0.3
   paddleOffset: 1
   ballRadius: 0.25
-  ballStartSpeed: 2.5
+  ballStartSpeed: 1
   ballMaxSpeed: 10
   ballSpeedIncrease: 0.5
   maxBounceAngle: 60
   pointsToWin: 11
   autoRestart: 1
-  serveDelay: 1
+  serveDelay: 0
   aiDifficulty: 0
   enableTimeScale: 1
   enableTUI: 1
