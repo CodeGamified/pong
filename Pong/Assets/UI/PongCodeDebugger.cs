@@ -49,8 +49,12 @@ namespace Pong.UI
             _program != null && _program.Executor != null && _program.Program != null
             && _program.Program.Instructions != null && _program.Program.Instructions.Length > 0;
 
-        protected override int GetPC() =>
-            _program?.State?.PC ?? 0;
+        protected override int GetPC()
+        {
+            var s = _program?.State;
+            if (s == null) return 0;
+            return s.LastExecutedPC >= 0 ? s.LastExecutedPC : s.PC;
+        }
 
         protected override long GetCycleCount() =>
             _program?.State?.CycleCount ?? 0;
@@ -82,12 +86,12 @@ namespace Pong.UI
                 bool isActive = (i == activeLine);
                 if (isActive)
                 {
-                    lines.Add(TUIColors.Fg(TUIColors.BrightGreen, $" {i + 1,3} {src[i]}"));
+                    lines.Add(TUIColors.Fg(TUIColors.BrightGreen, $" {i + 1:D3}  {src[i]}"));
                 }
                 else
                 {
-                    string num = TUIColors.Dimmed($"{i + 1,3}");
-                    lines.Add($" {num} {src[i]}");
+                    string num = TUIColors.Dimmed($"{i + 1:D3}");
+                    lines.Add($" {num}  {src[i]}");
                 }
             }
             return lines;
@@ -119,23 +123,26 @@ namespace Pong.UI
 
             var instructions = _program.Program.Instructions;
             int total = instructions.Length;
-            int offset = pc - ContentRows / 3;
-            int visibleCount = Mathf.Min(ContentRows, total + 2);
+
+            int offset = 0;
+            if (total > ContentRows)
+                offset = Mathf.Clamp(pc - ContentRows / 3, 0, total - ContentRows);
+            int visibleCount = Mathf.Min(ContentRows, total);
 
             for (int j = 0; j < visibleCount; j++)
             {
-                int i = ((offset + j) % total + total) % total;
+                int i = offset + j;
                 var inst = instructions[i];
                 bool isPC = (i == pc);
                 string asm = inst.ToAssembly(FormatPongOp);
                 if (isPC)
                 {
-                    lines.Add(TUIColors.Fg(TUIColors.BrightGreen, $" {i:X3} {asm}"));
+                    lines.Add(TUIColors.Fg(TUIColors.BrightGreen, $" {i:X3}  {asm}"));
                 }
                 else
                 {
                     string addr = TUIColors.Dimmed($"{i:X3}");
-                    lines.Add($" {addr} {asm}");
+                    lines.Add($" {addr}  {asm}");
                 }
             }
             return lines;
@@ -143,43 +150,13 @@ namespace Pong.UI
 
         protected override List<string> BuildStateColumn()
         {
-            var lines = new List<string>();
-            if (!HasLiveProgram) return lines;
-
-            var state = _program.State;
-
-            // Registers
-            for (int r = 0; r < MachineState.REGISTER_COUNT; r++)
-            {
-                bool modified = (r == state.LastRegisterModified);
-                string rName = $"R{r}:";
-                string rVal = $"{state.Registers[r]:F2}";
-                if (modified)
-                    lines.Add(TUIColors.Fg(TUIColors.BrightGreen, $" {rName,-4} {rVal}"));
-                else
-                    lines.Add($" {TUIColors.Dimmed(rName),-4} {rVal}");
-            }
-
-            // Flags
-            lines.Add($" FLAGS: {state.Flags}");
-            lines.Add($" PC: {state.PC}");
-            lines.Add($" STACK [{state.Stack.Count}]");
-
-            // Variables
-            if (state.NameToAddress.Count > 0)
-            {
-                lines.Add(TUIColors.Fg(TUIColors.BrightCyan, " VARIABLES"));
-                foreach (var kvp in state.NameToAddress)
-                {
-                    string name = kvp.Key;
-                    float val = 0;
-                    if (state.Memory.ContainsKey(name))
-                        val = state.Memory[name];
-                    lines.Add($" {TUIColors.Dimmed(name + ":")} {val:F2}");
-                }
-            }
-
-            return lines;
+            if (!HasLiveProgram) return new List<string>();
+            var s = _program.State;
+            int displayPC = s.LastExecutedPC >= 0 ? s.LastExecutedPC : s.PC;
+            return TUIWidgets.BuildStateLines(
+                s.Registers, s.LastRegisterModified,
+                s.Flags, displayPC, s.Stack.Count,
+                s.NameToAddress, s.Memory);
         }
     }
 }

@@ -13,6 +13,8 @@ namespace Pong.Audio
     /// </summary>
     public class PongAudioProvider : IAudioProvider
     {
+        private static GameObject _persistentGO;
+
         private AudioSource _source;
         private AudioSource _musicSource;
 
@@ -28,7 +30,15 @@ namespace Pong.Audio
 
         public PongAudioProvider()
         {
+            // Destroy previous instance's DontDestroyOnLoad object to prevent overlapping audio
+            if (_persistentGO != null)
+            {
+                Object.Destroy(_persistentGO);
+                _persistentGO = null;
+            }
+
             var go = new GameObject("PongAudio");
+            _persistentGO = go;
             Object.DontDestroyOnLoad(go);
             _source = go.AddComponent<AudioSource>();
             _source.playOnAwake = false;

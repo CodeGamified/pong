@@ -338,9 +338,7 @@ namespace Pong.UI
         private TMP_FontAsset GetFont()
         {
             if (_font != null) return _font;
-            _font = Resources.Load<TMP_FontAsset>("Fonts/Unifont SDF");
-            if (_font == null)
-                _font = Resources.Load<TMP_FontAsset>("Fonts & Materials/LiberationSans SDF");
+            _font = Resources.Load<TMP_FontAsset>("Unifont SDF");
             return _font;
         }
     }

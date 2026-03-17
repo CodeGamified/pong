@@ -40,6 +40,51 @@ namespace Pong.Core
         protected override string LogTag => "PONG";
 
         // =================================================================
+        // STATIC OVERRIDES (survive scene reload)
+        // =================================================================
+
+        private static float? _courtWidthOverride;
+        private static float? _courtHeightOverride;
+        private static float? _paddleHeightOverride;
+        private static float? _ballRadiusOverride;
+        private static float? _ballStartSpeedOverride;
+        private static float? _ballSpeedIncreaseOverride;
+        private static float? _maxBounceAngleOverride;
+
+        public static void SaveOverrides(PongBootstrap b)
+        {
+            _courtWidthOverride = b.courtWidth;
+            _courtHeightOverride = b.courtHeight;
+            _paddleHeightOverride = b.paddleHeight;
+            _ballRadiusOverride = b.ballRadius;
+            _ballStartSpeedOverride = b.ballStartSpeed;
+            _ballSpeedIncreaseOverride = b.ballSpeedIncrease;
+            _maxBounceAngleOverride = b.maxBounceAngle;
+        }
+
+        public static void ClearOverrides()
+        {
+            _courtWidthOverride = null;
+            _courtHeightOverride = null;
+            _paddleHeightOverride = null;
+            _ballRadiusOverride = null;
+            _ballStartSpeedOverride = null;
+            _ballSpeedIncreaseOverride = null;
+            _maxBounceAngleOverride = null;
+        }
+
+        private void ApplyOverrides()
+        {
+            if (_courtWidthOverride.HasValue) courtWidth = _courtWidthOverride.Value;
+            if (_courtHeightOverride.HasValue) courtHeight = _courtHeightOverride.Value;
+            if (_paddleHeightOverride.HasValue) paddleHeight = _paddleHeightOverride.Value;
+            if (_ballRadiusOverride.HasValue) ballRadius = _ballRadiusOverride.Value;
+            if (_ballStartSpeedOverride.HasValue) ballStartSpeed = _ballStartSpeedOverride.Value;
+            if (_ballSpeedIncreaseOverride.HasValue) ballSpeedIncrease = _ballSpeedIncreaseOverride.Value;
+            if (_maxBounceAngleOverride.HasValue) maxBounceAngle = _maxBounceAngleOverride.Value;
+        }
+
+        // =================================================================
         // INSPECTOR
         // =================================================================
 
@@ -490,6 +535,7 @@ namespace Pong.Core
 
         private void Start()
         {
+            ApplyOverrides();
             Log("🏓 Pong Bootstrap starting...");
 
             SettingsBridge.Load();
