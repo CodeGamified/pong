@@ -80,6 +80,22 @@ namespace Pong.Scripting
                         ? PongInputProvider.Instance.MouseWorldY : 0f);
                     break;
 
+                // ── Court dimensions ──
+                case PongOpCode.GET_COURT_H:
+                    state.SetRegister(0, _court.Height);
+                    break;
+                case PongOpCode.GET_COURT_W:
+                    state.SetRegister(0, _court.Width);
+                    break;
+
+                // ── Event waits ──
+                case PongOpCode.WAIT_OPP_HIT:
+                    state.IsWaiting = true;
+                    break;
+                case PongOpCode.WAIT_WALL_HIT:
+                    state.IsWaiting = true;
+                    break;
+
                 // ── Orders ──
                 case PongOpCode.SET_TARGET_Y:
                     float targetY = state.Registers[0];

@@ -32,6 +32,14 @@ namespace Pong.Scripting
 
         // More orders
         MOVE_TARGET_Y  = 12, // CUSTOM_12
+
+        // Court dimensions
+        GET_COURT_H    = 13, // CUSTOM_13
+        GET_COURT_W    = 14, // CUSTOM_14
+
+        // Event waits
+        WAIT_OPP_HIT   = 15, // CUSTOM_15
+        WAIT_WALL_HIT  = 16, // CUSTOM_16
     }
 
     /// <summary>
@@ -82,6 +90,18 @@ namespace Pong.Scripting
                     return true;
                 case "get_mouse_y":
                     ctx.Emit(OpCode.CUSTOM_0 + (int)PongOpCode.GET_MOUSE_Y, 0, 0, 0, sourceLine, "get_mouse_y → R0");
+                    return true;
+                case "get_court_height":
+                    ctx.Emit(OpCode.CUSTOM_0 + (int)PongOpCode.GET_COURT_H, 0, 0, 0, sourceLine, "get_court_height → R0");
+                    return true;
+                case "get_court_width":
+                    ctx.Emit(OpCode.CUSTOM_0 + (int)PongOpCode.GET_COURT_W, 0, 0, 0, sourceLine, "get_court_width → R0");
+                    return true;
+                case "wait_for_opponent_hit":
+                    ctx.Emit(OpCode.CUSTOM_0 + (int)PongOpCode.WAIT_OPP_HIT, 0, 0, 0, sourceLine, "wait_for_opponent_hit");
+                    return true;
+                case "wait_for_wall_hit":
+                    ctx.Emit(OpCode.CUSTOM_0 + (int)PongOpCode.WAIT_WALL_HIT, 0, 0, 0, sourceLine, "wait_for_wall_hit");
                     return true;
 
                 // ── Orders: arg from R0 ──

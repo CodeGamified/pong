@@ -78,20 +78,54 @@ namespace Pong.UI
             if (src == null) return lines;
 
             int activeLine = -1;
+            int activeEnd = -1;
+            bool isHalt = false;
+            Instruction activeInst = default;
             if (HasLiveProgram && _program.Program.Instructions.Length > 0 && pc < _program.Program.Instructions.Length)
-                activeLine = _program.Program.Instructions[pc].SourceLine - 1;
+            {
+                activeInst = _program.Program.Instructions[pc];
+                activeLine = activeInst.SourceLine - 1;
+                isHalt = activeInst.Op == OpCode.HALT;
+                if (activeLine >= 0)
+                    activeEnd = SourceHighlight.GetContinuationEnd(src, activeLine);
+            }
+
+            // Synthetic "while True:" at display row 0
+            if (scrollOffset == 0 && lines.Count < ContentRows)
+            {
+                string whileLine = "while True:";
+                if (isHalt)
+                    lines.Add(TUIColors.Fg(TUIColors.BrightGreen, $"  {TUIGlyphs.ArrowR}   {whileLine}"));
+                else
+                    lines.Add($"  {TUIColors.Dimmed(TUIGlyphs.ArrowR)}   {SynthwaveHighlighter.Highlight(whileLine)}");
+            }
+
+            // Find the ONE line that contains the active token
+            int tokenLine = -1;
+            if (activeLine >= 0)
+            {
+                string token = SourceHighlight.GetSourceToken(activeInst);
+                if (token != null)
+                {
+                    for (int k = activeLine; k <= activeEnd; k++)
+                    {
+                        if (src[k].IndexOf(token) >= 0) { tokenLine = k; break; }
+                    }
+                }
+                if (tokenLine < 0) tokenLine = activeLine;
+            }
 
             for (int i = scrollOffset; i < src.Length && lines.Count < ContentRows; i++)
             {
-                bool isActive = (i == activeLine);
-                if (isActive)
+                if (i == tokenLine)
                 {
-                    lines.Add(TUIColors.Fg(TUIColors.BrightGreen, $" {i + 1:D3}  {src[i]}"));
+                    lines.Add(SourceHighlight.HighlightActiveLine(
+                        src[i], $" {i + 1:D3}      ", activeInst));
                 }
                 else
                 {
                     string num = TUIColors.Dimmed($"{i + 1:D3}");
-                    lines.Add($" {num}  {src[i]}");
+                    lines.Add($" {num}      {SynthwaveHighlighter.Highlight(src[i])}");
                 }
             }
             return lines;
@@ -102,16 +136,20 @@ namespace Pong.UI
             int id = (int)inst.Op - (int)OpCode.CUSTOM_0;
             return (PongOpCode)id switch
             {
-                GET_BALL_X    => "INP  R0, BALL.X",
-                GET_BALL_Y    => "INP  R0, BALL.Y",
-                GET_BALL_VX   => "INP  R0, BALL.VX",
-                GET_BALL_VY   => "INP  R0, BALL.VY",
-                GET_PADDLE_Y  => "INP  R0, PAD.Y",
-                GET_PADDLE_X  => "INP  R0, PAD.X",
-                GET_SCORE     => "INP  R0, SCORE",
-                GET_OPP_SCORE => "INP  R0, OPP.SC",
-                GET_OPP_Y     => "INP  R0, OPP.Y",
-                SET_TARGET_Y  => "OUT  TGT.Y, R0",
+                GET_BALL_X    => "INP R0, BALL.X",
+                GET_BALL_Y    => "INP R0, BALL.Y",
+                GET_BALL_VX   => "INP R0, BALL.VX",
+                GET_BALL_VY   => "INP R0, BALL.VY",
+                GET_PADDLE_Y  => "INP R0, PAD.Y",
+                GET_PADDLE_X  => "INP R0, PAD.X",
+                GET_SCORE     => "INP R0, SCORE",
+                GET_OPP_SCORE => "INP R0, OPP.SC",
+                GET_OPP_Y     => "INP R0, OPP.Y",
+                GET_COURT_H   => "INP R0, CRT.H",
+                GET_COURT_W   => "INP R0, CRT.W",
+                WAIT_OPP_HIT  => "WAIT OPP.HIT",
+                WAIT_WALL_HIT => "WAIT WALL.HIT",
+                SET_TARGET_Y  => "OUT TGT.Y, R0",
                 _             => $"IO.{id,2} {inst.Arg0}, {inst.Arg1}"
             };
         }
@@ -142,7 +180,7 @@ namespace Pong.UI
                 else
                 {
                     string addr = TUIColors.Dimmed($"{i:X3}");
-                    lines.Add($" {addr}  {asm}");
+                    lines.Add($" {addr}  {SynthwaveHighlighter.HighlightAsm(asm)}");
                 }
             }
             return lines;

@@ -41,6 +41,11 @@ namespace Pong.Scripting
         public const float OPS_PER_SECOND = 20f;
         private float _opAccumulator;
 
+        // Event handler addresses (from compiled metadata)
+        private int _hitOppPC = -1;
+        private int _hitWallPC = -1;
+        private int _servePC = -1;
+
         // Default starter code
         private const string DEFAULT_CODE = @"# 🏓 PONG — Write your paddle AI!
 # Your script runs at 20 ops/sec (sim-time).
@@ -57,10 +62,13 @@ namespace Pong.Scripting
 #   get_mouse_y()       → mouse Y (world space)
 #   set_target_y(y)     → move to Y
 #   move_target_y(dy)   → nudge target by dy
+#   get_court_height()  → court height
+#   get_court_width()   → court width
+#   wait_for_opponent_hit() → sleep until opponent hits ball
+#   hit_opp: / hit_wall: / serve: → event hooks (run body on event)
 #
-# This 2-line script uses ~8 ops per pass:
-ball_y = get_ball_y()
-set_target_y(ball_y)
+# This 1-line script is the simplest AI:
+set_target_y(get_ball_y())
 ";
 
         public const string USER_CONTROLLED_CODE = @"# USER CONTROLLED — Keyboard input (~2 ops)
@@ -89,6 +97,14 @@ set_target_y(get_mouse_y())
             _sourceCode = initialCode ?? DEFAULT_CODE;
             _autoRun = true;
 
+            // Wake script on opponent paddle hit, wall bounce, or serve
+            if (_ball != null)
+            {
+                _ball.OnPaddleHit += OnBallPaddleHit;
+                _ball.OnWallHit += OnBallWallHit;
+                _ball.OnServed += OnBallServed;
+            }
+
             // Initial compile
             LoadAndRun(_sourceCode);
         }
@@ -115,8 +131,11 @@ set_target_y(get_mouse_y())
             for (int i = 0; i < opsToRun; i++)
             {
                 // If halted (end of script), restart from top
+                // But for hook-based scripts, stay halted (idle) until event fires
                 if (_executor.State.IsHalted)
                 {
+                    if (_hitOppPC >= 0 || _hitWallPC >= 0 || _servePC >= 0)
+                        break; // hook-based: stay idle, events will wake us
                     _executor.State.PC = 0;
                     _executor.State.IsHalted = false;
                 }
@@ -138,7 +157,14 @@ set_target_y(get_mouse_y())
         {
             // Compile straight — no while wrapper, no wait.
             // Script runs top-to-bottom each tick with a fixed instruction budget.
-            return PythonCompiler.Compile(source, name, _compilerExt);
+            var program = PythonCompiler.Compile(source, name, _compilerExt);
+
+            // Extract event handler addresses from compiled metadata
+            _hitOppPC = program.Metadata.TryGetValue("handler:hit_opp", out var opp) ? (int)opp : -1;
+            _hitWallPC = program.Metadata.TryGetValue("handler:hit_wall", out var wall) ? (int)wall : -1;
+            _servePC = program.Metadata.TryGetValue("handler:serve", out var srv) ? (int)srv : -1;
+
+            return program;
         }
 
         protected override void ProcessEvents()
@@ -176,6 +202,92 @@ set_target_y(get_mouse_y())
             if (_executor?.State == null) return;
             _executor.State.Reset();
             _opAccumulator = 0f;
+        }
+
+        /// <summary>Jump to serve handler when ball is served.</summary>
+        private void OnBallServed()
+        {
+            if (_executor?.State == null || _servePC < 0) return;
+            JumpToHandler(_servePC);
+        }
+
+        /// <summary>Wake script from wait_for_opponent_hit() or jump to hit_opp handler.</summary>
+        private void OnBallPaddleHit(PaddleSide side)
+        {
+            if (_executor?.State == null) return;
+            // Only react to the opponent's side hitting
+            if (side == _paddle.Side) return;
+
+            if (_hitOppPC >= 0)
+            {
+                JumpToHandler(_hitOppPC);
+                return;
+            }
+
+            // Legacy wait-based: wake from WAIT_OPP_HIT
+            if (_executor.State.IsWaiting)
+            {
+                var inst = CurrentWaitInstruction;
+                if (inst == null || (int)inst.Value.Op == (int)OpCode.CUSTOM_0 + (int)PongOpCode.WAIT_OPP_HIT)
+                    _executor.State.IsWaiting = false;
+            }
+        }
+
+        /// <summary>Wake script from wait_for_wall_hit() or jump to hit_wall handler.</summary>
+        private void OnBallWallHit()
+        {
+            if (_executor?.State == null) return;
+
+            if (_hitWallPC >= 0)
+            {
+                JumpToHandler(_hitWallPC);
+                return;
+            }
+
+            // Legacy wait-based: wake from WAIT_WALL_HIT
+            if (_executor.State.IsWaiting)
+            {
+                var inst = CurrentWaitInstruction;
+                if (inst != null && (int)inst.Value.Op == (int)OpCode.CUSTOM_0 + (int)PongOpCode.WAIT_WALL_HIT)
+                    _executor.State.IsWaiting = false;
+            }
+        }
+
+        /// <summary>
+        /// Interrupt current execution and jump PC to a handler address.
+        /// Clears call stack so we don't return into stale code.
+        /// </summary>
+        private void JumpToHandler(int handlerPC)
+        {
+            var s = _executor.State;
+            s.PC = handlerPC;
+            s.IsHalted = false;
+            s.IsWaiting = false;
+            s.Stack.Clear();
+        }
+
+        /// <summary>Get the instruction the executor is currently waiting on, or null.</summary>
+        private Instruction? CurrentWaitInstruction
+        {
+            get
+            {
+                if (_executor?.State == null || _program == null) return null;
+                // PC was already incremented past the WAIT instruction, so look at LastExecutedPC
+                int pc = _executor.State.LastExecutedPC;
+                if (pc >= 0 && pc < _program.Instructions.Length)
+                    return _program.Instructions[pc];
+                return null;
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (_ball != null)
+            {
+                _ball.OnPaddleHit -= OnBallPaddleHit;
+                _ball.OnWallHit -= OnBallWallHit;
+                _ball.OnServed -= OnBallServed;
+            }
         }
     }
 }

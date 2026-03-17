@@ -31,6 +31,10 @@ namespace Pong.Scripting
                 new EditorFuncInfo { Name = "get_opponent_y",   Hint = "opponent paddle Y",    ArgCount = 0 },
                 new EditorFuncInfo { Name = "get_score",        Hint = "your score",           ArgCount = 0 },
                 new EditorFuncInfo { Name = "get_opponent_score",Hint = "opponent score",      ArgCount = 0 },
+                new EditorFuncInfo { Name = "get_court_height", Hint = "court height",         ArgCount = 0 },
+                new EditorFuncInfo { Name = "get_court_width",  Hint = "court width",          ArgCount = 0 },
+                new EditorFuncInfo { Name = "wait_for_opponent_hit", Hint = "sleep until opponent hits ball", ArgCount = 0 },
+                new EditorFuncInfo { Name = "wait_for_wall_hit",     Hint = "sleep until ball bounces off wall", ArgCount = 0 },
                 new EditorFuncInfo { Name = "set_target_y",     Hint = "move paddle to Y",     ArgCount = 1 },
             };
         }

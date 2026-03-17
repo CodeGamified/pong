@@ -47,6 +47,7 @@ namespace Pong.UI
         private Slider _speedSlider;
         private Slider _qualitySlider;
         private Slider _fontSlider;
+        private bool _fontSliderDirty;
 
         // ── Bootstrap parameter sliders ─────────────────────────
         private Slider _courtWSlider;
@@ -146,6 +147,7 @@ namespace Pong.UI
             if (!rowsReady) return;
             AdvanceAsciiTimer();
             if (IsExpanded) HandleInput();
+            CheckFontSliderRelease();
         }
 
         // ═══════════════════════════════════════════════════════════════
@@ -263,7 +265,17 @@ namespace Pong.UI
             { if (!shift) LoadMouseControlled(); }
 
             if (Input.GetKeyDown(KeyCode.R)) ReloadScene();
-            if (Input.GetKeyDown(KeyCode.D)) { PongBootstrap.ClearOverrides(); SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex); }
+            if (Input.GetKeyDown(KeyCode.D))
+            {
+                PongBootstrap.ClearOverrides();
+                SimulationTime.Instance?.SetTimeScale(1f);
+                SettingsBridge.SetQualityLevel(3); QualityBridge.SetTier(QualityTier.Ultra);
+                SettingsBridge.SetFontSize(20f);
+                SettingsBridge.SetMasterVolume(0.5f);
+                SettingsBridge.SetMusicVolume(0.25f);
+                SettingsBridge.SetSfxVolume(0.75f);
+                SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+            }
 
             // Audio
             if (Input.GetKeyDown(KeyCode.F5))
@@ -412,10 +424,7 @@ namespace Pong.UI
 
             _fontSlider = CreateRawSlider(2, sliderStart, barWidth);
             _fontSlider.SetValueWithoutNotify(FontToSlider(SettingsBridge.FontSize));
-            _fontSlider.onValueChanged.AddListener(v =>
-            {
-                SettingsBridge.SetFontSize(SliderToFont(v));
-            });
+            _fontSlider.onValueChanged.AddListener(_ => _fontSliderDirty = true);
 
             // Bootstrap parameter sliders (rows 3-9 in col 5)
             if (_bootstrap == null) return;
@@ -514,6 +523,16 @@ namespace Pong.UI
             s.handleRect = handleRect;
 
             return s;
+        }
+
+        private void CheckFontSliderRelease()
+        {
+            if (!_fontSliderDirty || _fontSlider == null) return;
+            if (Input.GetMouseButtonUp(0))
+            {
+                SettingsBridge.SetFontSize(SliderToFont(_fontSlider.value));
+                _fontSliderDirty = false;
+            }
         }
 
         private static void RepositionRawSlider(Slider s, float charWidth, int startChar, int widthChars)
@@ -705,7 +724,7 @@ namespace Pong.UI
                     new Action<int>[] {
                         _ => LoadPlayerSample(AIDifficulty.Easy),
                         _ => SetAIDifficulty(AIDifficulty.Easy),
-                        _ => { PongBootstrap.ClearOverrides(); SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex); },
+                        _ => { PongBootstrap.ClearOverrides(); SimulationTime.Instance?.SetTimeScale(1f); SettingsBridge.SetQualityLevel(3); QualityBridge.SetTier(QualityTier.Ultra); SettingsBridge.SetFontSize(20f); SettingsBridge.SetMasterVolume(0.5f); SettingsBridge.SetMusicVolume(0.25f); SettingsBridge.SetSfxVolume(0.75f); SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex); },
                         rdDec, rdInc
                     });
 

@@ -30,6 +30,7 @@ namespace Pong.Game
         public System.Action<PaddleSide> OnGoalScored;
         public System.Action<PaddleSide> OnPaddleHit;
         public System.Action OnWallHit;
+        public System.Action OnServed;
 
         // References (set after creation)
         public PongPaddle LeftPaddle { get; set; }
@@ -66,6 +67,7 @@ namespace Pong.Game
             Velocity = new Vector2(dirX * Mathf.Cos(angle), Mathf.Sin(angle)).normalized * _startSpeed;
             CurrentSpeed = _startSpeed;
             IsActive = true;
+            OnServed?.Invoke();
         }
 
         public void Stop()

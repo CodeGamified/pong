@@ -65,49 +65,39 @@ namespace Pong.AI
             switch (difficulty)
             {
                 case AIDifficulty.Easy:
-                    return @"# EASY — ""The Tracker"" (~8 ops)
-# ~2.5 passes/sec at 20 ops/s
-ball_y = get_ball_y()
-set_target_y(ball_y)";
+                    return @"# ""Tracker""
+set_target_y(get_ball_y())";
 
                 case AIDifficulty.Medium:
-                    return @"# MEDIUM — ""The Anticipator"" (~12 ops)
-# Lookahead with velocity
-ball_y = get_ball_y()
-ball_vy = get_ball_vy()
-set_target_y(ball_y + ball_vy * 0.3)";
+                    return @"# ""Anticipator""
+# Lookahead
+set_target_y(
+    get_ball_y() + get_ball_vy() * 0.3)";
 
                 case AIDifficulty.Hard:
-                    return @"# HARD — ""The Predictor"" (~18 ops)
-# Predict arrival Y. Tight code = fast updates.
-ball_x = get_ball_x()
-ball_vx = get_ball_vx()
-t = (get_paddle_x() - ball_x) / ball_vx
-py = get_ball_y() + get_ball_vy() * t
-if py > 4.75:
-    py = 9.5 - py
-if py < -4.75:
-    py = -9.5 - py
-set_target_y(py)";
+                    return @"# ""Predictor""
+# Predict arrival
+set_target_y(
+    get_ball_y() +
+    get_ball_vy() * (
+        (get_paddle_x() - get_ball_x())
+        / get_ball_vx()))";
 
                 case AIDifficulty.Expert:
-                    return @"# EXPERT — ""The Strategist"" (~24 ops)
-# Predict + aim away from opponent
-ball_x = get_ball_x()
-ball_vx = get_ball_vx()
-t = (get_paddle_x() - ball_x) / ball_vx
-py = get_ball_y() + get_ball_vy() * t
-if py > 4.75:
-    py = 9.5 - py
-if py < -4.75:
-    py = -9.5 - py
-opp_y = get_opponent_y()
-if opp_y > 0:
-    py = py - 0.5
-if opp_y < 0:
-    py = py + 0.5
-set_target_y(py)";
-
+                    return @"# ""Strategist""
+serve:
+    set_target_y(
+        get_ball_y() + get_ball_vy() 
+        * 
+        (get_paddle_x() - get_ball_x()) 
+        / 
+        get_ball_vx())
+hit_opp:
+    m = (get_ball_y() + get_ball_vy() *
+        (get_paddle_x() - get_ball_x())
+        / get_ball_vx() + get_court_height() / 2) % (get_court_height() * 2)
+    predict = min(m, get_court_height() * 2 - m) - get_court_height() / 2
+    set_target_y(predict + get_opponent_y() * 0.3)";
                 default:
                     return "# Unknown difficulty";
             }
