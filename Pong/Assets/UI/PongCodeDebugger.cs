@@ -95,9 +95,9 @@ namespace Pong.UI
             {
                 string whileLine = "while True:";
                 if (isHalt)
-                    lines.Add(TUIColors.Fg(TUIColors.BrightGreen, $"  {TUIGlyphs.ArrowR}   {whileLine}"));
+                    lines.Add(TUIColors.Fg(TUIColors.BrightGreen, $"  {TUIGlyphs.ArrowR} {whileLine}"));
                 else
-                    lines.Add($"  {TUIColors.Dimmed(TUIGlyphs.ArrowR)}   {SynthwaveHighlighter.Highlight(whileLine)}");
+                    lines.Add($"  {TUIColors.Dimmed(TUIGlyphs.ArrowR)} {SynthwaveHighlighter.Highlight(whileLine)}");
             }
 
             // Find the ONE line that contains the active token
@@ -120,12 +120,12 @@ namespace Pong.UI
                 if (i == tokenLine)
                 {
                     lines.Add(SourceHighlight.HighlightActiveLine(
-                        src[i], $" {i + 1:D3}      ", activeInst));
+                        src[i], $" {i + 1:D3}  ", activeInst));
                 }
                 else
                 {
                     string num = TUIColors.Dimmed($"{i + 1:D3}");
-                    lines.Add($" {num}      {SynthwaveHighlighter.Highlight(src[i])}");
+                    lines.Add($" {num}  {SynthwaveHighlighter.Highlight(src[i])}");
                 }
             }
             return lines;

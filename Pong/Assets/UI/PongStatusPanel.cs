@@ -397,7 +397,7 @@ namespace Pong.UI
             if (_colPositions == null || rows.Count <= 3) return;
 
             const int barOffset = 8;
-            const int barRightPad = 8;
+            const int barRightPad = 10;
             int barWidth = Mathf.Max(0, ColWidth(5) - barOffset - barRightPad);
             int sliderStart = _colPositions[5] + barOffset;
             bool slidersVisible = barWidth >= 4;
@@ -440,7 +440,7 @@ namespace Pong.UI
                 _bootstrap = FindFirstObjectByType<PongBootstrap>();
 
             const int barOffset = 8;
-            const int barRightPad = 4;
+            const int barRightPad = 10;
             int barWidth = Mathf.Max(0, ColWidth(4) - barOffset - barRightPad);
             int sliderStart = _colPositions[4] + barOffset;
             bool slidersVisible = barWidth >= 10;
@@ -495,7 +495,7 @@ namespace Pong.UI
                 _bootstrap = FindFirstObjectByType<PongBootstrap>();
 
             const int barOffset = 8;
-            const int barRightPad = 4;
+            const int barRightPad = 10;
             int barWidth = Mathf.Max(0, ColWidth(1) - barOffset - barRightPad);
             int sliderStart = _colPositions[1] + barOffset;
             bool slidersVisible = barWidth >= 10;
@@ -673,7 +673,6 @@ namespace Pong.UI
         {
             if (_colPositions == null || !IsExpanded) return;
 
-            var diffs = new[] { AIDifficulty.Easy, AIDifficulty.Medium, AIDifficulty.Hard, AIDifficulty.Expert };
             const int pad = 2;
             const int btnW = 3;
             int c1 = _colPositions[1];
@@ -685,16 +684,16 @@ namespace Pong.UI
             int w4 = Mathf.Max(4, ColWidth(4) - 2);
             int w6 = Mathf.Max(4, ColWidth(6) - 2);
 
-            // [-] at colStart + 1; [+] 4 chars from column end (min offset 5)
+            // [-] at colStart + 1; [+] at 3 chars from column end (matches AdaptiveSliderRow)
             int cw1 = ColWidth(1), cw4 = ColWidth(4), cw5 = ColWidth(5);
 
             int spdMinus   = c4 + 1;
-            int spdPlusOff = Mathf.Max(5, cw4 - 4);
+            int spdPlusOff = Mathf.Max(5, cw4 - 3);
             int spdPlus    = c4 + spdPlusOff;
             int spdPlusW   = Mathf.Max(btnW, cw4 - spdPlusOff);
 
             int qualMinus  = c1 + 1;
-            int qualPlusOff = Mathf.Max(5, cw1 - 4);
+            int qualPlusOff = Mathf.Max(5, cw1 - 3);
             int qualPlus   = c1 + qualPlusOff;
             int qualPlusW  = Mathf.Max(btnW, cw1 - qualPlusOff);
 
@@ -703,7 +702,7 @@ namespace Pong.UI
             int fontPlusW  = qualPlusW;
 
             int audioMinus = c5 + 1;
-            int audPlusOff = Mathf.Max(5, cw5 - 4);
+            int audPlusOff = Mathf.Max(5, cw5 - 3);
             int audioPlus  = c5 + audPlusOff;
             int audioPlusW = Mathf.Max(btnW, cw5 - audPlusOff);
 
@@ -735,38 +734,32 @@ namespace Pong.UI
                         new[] { btnW, spdPlusW, btnW, qualPlusW, btnW, audioPlusW });
                 if (2 < rows.Count)
                     rows[2].RepositionButtonOverlays(
-                        new[] { spdMinus, spdPlus, fontMinus, fontPlus, audioMinus, audioPlus },
-                        new[] { btnW, spdPlusW, btnW, fontPlusW, btnW, audioPlusW });
+                        new[] { c4 + pad, fontMinus, fontPlus, audioMinus, audioPlus },
+                        new[] { w4, btnW, fontPlusW, btnW, audioPlusW });
                 if (3 < rows.Count)
                     rows[3].RepositionButtonOverlays(
-                        new[] { spdMinus, spdPlus, audioMinus, audioPlus, setMinus, setPlus },
-                        new[] { btnW, spdPlusW, btnW, audioPlusW, btnW, setPlusW });
+                        new[] { pad, setMinus, setPlus, audioMinus, audioPlus, c6 + pad },
+                        new[] { w0, btnW, setPlusW, btnW, audioPlusW, w6 });
                 if (4 < rows.Count)
                     rows[4].RepositionButtonOverlays(
-                        new[] { spdMinus, spdPlus, setMinus, setPlus },
-                        new[] { btnW, spdPlusW, btnW, setPlusW });
+                        new[] { pad, setMinus, setPlus, c6 + pad },
+                        new[] { w0, btnW, setPlusW, w6 });
                 if (5 < rows.Count)
                     rows[5].RepositionButtonOverlays(
-                        new[] { c4 + pad, setMinus, setPlus },
-                        new[] { w4, btnW, setPlusW });
+                        new[] { pad, setMinus, setPlus, spdMinus, spdPlus, c6 + pad },
+                        new[] { w0, btnW, setPlusW, btnW, spdPlusW, w6 });
                 if (6 < rows.Count)
                     rows[6].RepositionButtonOverlays(
-                        new[] { pad, c6 + pad, c4 + pad, setMinus, setPlus },
-                        new[] { w0, w6, w4, btnW, setPlusW });
+                        new[] { pad, setMinus, setPlus, spdMinus, spdPlus, c6 + pad },
+                        new[] { w0, btnW, setPlusW, btnW, spdPlusW, w6 });
                 if (7 < rows.Count)
                     rows[7].RepositionButtonOverlays(
-                        new[] { pad, c6 + pad, c4 + pad },
-                        new[] { w0, w6, w4 });
-                for (int i = 2; i < diffs.Length && 6 + i < rows.Count; i++)
-                    rows[6 + i].RepositionButtonOverlays(
-                        new[] { pad, c6 + pad },
-                        new[] { w0, w6 });
-                for (int r = 10; r <= 11 && r < rows.Count; r++)
-                    rows[r].RepositionButtonOverlays(
-                        new[] { pad }, new[] { w0 });
-                if (13 < rows.Count)
-                    rows[13].RepositionButtonOverlays(
-                        new[] { pad }, new[] { w0 });
+                        new[] { pad, spdMinus, spdPlus },
+                        new[] { w0, btnW, spdPlusW });
+                if (8 < rows.Count)
+                    rows[8].RepositionButtonOverlays(
+                        new[] { pad, c1 + pad },
+                        new[] { w0, w1 });
                 return;
             }
 
@@ -784,107 +777,86 @@ namespace Pong.UI
                         _ => SettingsBridge.SetMasterVolume(Mathf.Clamp01(SettingsBridge.MasterVolume + 0.1f))
                     });
 
-            // ── Row 2: BSP [-][+] + FNT [-][+] + MSC [-][+] ──
+            // ── Row 2: [P] PAUSE + FNT [-][+] + MSC [-][+] ──
             if (2 < rows.Count)
                 rows[2].CreateButtonOverlays(
-                    new[] { spdMinus, spdPlus, fontMinus, fontPlus, audioMinus, audioPlus },
-                    new[] { btnW, spdPlusW, btnW, fontPlusW, btnW, audioPlusW },
+                    new[] { c4 + pad, fontMinus, fontPlus, audioMinus, audioPlus },
+                    new[] { w4, btnW, fontPlusW, btnW, audioPlusW },
                     new Action<int>[] {
-                        bsDec, bsInc,
+                        _ => SimulationTime.Instance?.TogglePause(),
                         _ => SettingsBridge.SetFontSize(SettingsBridge.FontSize - 1f),
                         _ => SettingsBridge.SetFontSize(SettingsBridge.FontSize + 1f),
                         _ => SettingsBridge.SetMusicVolume(Mathf.Clamp01(SettingsBridge.MusicVolume - 0.1f)),
                         _ => SettingsBridge.SetMusicVolume(Mathf.Clamp01(SettingsBridge.MusicVolume + 0.1f))
                     });
 
-            // ── Row 3: INC [-][+] + SFX [-][+] + C.W [-][+] ──
+            // ── Row 3: [1] Easy + C.W [-][+] + SFX [-][+] + [S+1] Easy ──
             if (3 < rows.Count)
                 rows[3].CreateButtonOverlays(
-                    new[] { spdMinus, spdPlus, audioMinus, audioPlus, setMinus, setPlus },
-                    new[] { btnW, spdPlusW, btnW, audioPlusW, btnW, setPlusW },
-                    new Action<int>[] {
-                        siDec, siInc,
-                        _ => SettingsBridge.SetSfxVolume(Mathf.Clamp01(SettingsBridge.SfxVolume - 0.1f)),
-                        _ => SettingsBridge.SetSfxVolume(Mathf.Clamp01(SettingsBridge.SfxVolume + 0.1f)),
-                        cwDec, cwInc
-                    });
-
-            // ── Row 4: ANG [-][+] + C.H [-][+] ──
-            if (4 < rows.Count)
-                rows[4].CreateButtonOverlays(
-                    new[] { spdMinus, spdPlus, setMinus, setPlus },
-                    new[] { btnW, spdPlusW, btnW, setPlusW },
-                    new Action<int>[] { anDec, anInc, chDec, chInc });
-
-            // ── Row 5: Reset + PDL [-][+] ──
-            if (5 < rows.Count)
-                rows[5].CreateButtonOverlays(
-                    new[] { c4 + pad, setMinus, setPlus },
-                    new[] { w4, btnW, setPlusW },
-                    new Action<int>[] {
-                        _ => ReloadScene(),
-                        pdDec, pdInc
-                    });
-
-            // ── Row 6: AI Easy + Default + RAD [-][+] ──
-            if (6 < rows.Count)
-                rows[6].CreateButtonOverlays(
-                    new[] { pad, c6 + pad, c4 + pad, setMinus, setPlus },
-                    new[] { w0, w6, w4, btnW, setPlusW },
+                    new[] { pad, setMinus, setPlus, audioMinus, audioPlus, c6 + pad },
+                    new[] { w0, btnW, setPlusW, btnW, audioPlusW, w6 },
                     new Action<int>[] {
                         _ => LoadPlayerSample(AIDifficulty.Easy),
-                        _ => SetAIDifficulty(AIDifficulty.Easy),
-                        _ => { PongBootstrap.ClearOverrides(); SimulationTime.Instance?.SetTimeScale(1f); SettingsBridge.SetQualityLevel(3); QualityBridge.SetTier(QualityTier.Ultra); SettingsBridge.SetFontSize(20f); SettingsBridge.SetMasterVolume(0.5f); SettingsBridge.SetMusicVolume(0.25f); SettingsBridge.SetSfxVolume(0.75f); SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex); },
-                        rdDec, rdInc
+                        cwDec, cwInc,
+                        _ => SettingsBridge.SetSfxVolume(Mathf.Clamp01(SettingsBridge.SfxVolume - 0.1f)),
+                        _ => SettingsBridge.SetSfxVolume(Mathf.Clamp01(SettingsBridge.SfxVolume + 0.1f)),
+                        _ => SetAIDifficulty(AIDifficulty.Easy)
                     });
 
-            // ── Rows 7-9: AI diff + Pause ──
-            for (int i = 1; i < diffs.Length; i++)
-            {
-                int r = 6 + i;
-                if (r >= rows.Count) break;
-                var diff = diffs[i];
-                if (i == 1)
-                {
-                    // Row 7: AI Medium + Pause
-                    rows[r].CreateButtonOverlays(
-                        new[] { pad, c6 + pad, c4 + pad },
-                        new[] { w0, w6, w4 },
-                        new Action<int>[] {
-                            _ => LoadPlayerSample(diff),
-                            _ => SetAIDifficulty(diff),
-                            _ => SimulationTime.Instance?.TogglePause()
-                        });
-                }
-                else
-                {
-                    rows[r].CreateButtonOverlays(
-                        new[] { pad, c6 + pad },
-                        new[] { w0, w6 },
-                        new Action<int>[] {
-                            _ => LoadPlayerSample(diff),
-                            _ => SetAIDifficulty(diff)
-                        });
-                }
-            }
+            // ── Row 4: [2] Medium + C.H [-][+] + [S+2] Medium ──
+            if (4 < rows.Count)
+                rows[4].CreateButtonOverlays(
+                    new[] { pad, setMinus, setPlus, c6 + pad },
+                    new[] { w0, btnW, setPlusW, w6 },
+                    new Action<int>[] {
+                        _ => LoadPlayerSample(AIDifficulty.Medium),
+                        chDec, chInc,
+                        _ => SetAIDifficulty(AIDifficulty.Medium)
+                    });
 
-            // ── Row 10: col 0 keyboard ──
-            if (10 < rows.Count)
-                rows[10].CreateButtonOverlays(
-                    new[] { pad }, new[] { w0 },
-                    new Action<int>[] { _ => LoadUserControlled() });
+            // ── Row 5: [3] Hard + PDL [-][+] + BSP [-][+] + [S+3] Hard ──
+            if (5 < rows.Count)
+                rows[5].CreateButtonOverlays(
+                    new[] { pad, setMinus, setPlus, spdMinus, spdPlus, c6 + pad },
+                    new[] { w0, btnW, setPlusW, btnW, spdPlusW, w6 },
+                    new Action<int>[] {
+                        _ => LoadPlayerSample(AIDifficulty.Hard),
+                        pdDec, pdInc,
+                        bsDec, bsInc,
+                        _ => SetAIDifficulty(AIDifficulty.Hard)
+                    });
 
-            // ── Row 11: col 0 mouse ──
-            if (11 < rows.Count)
-                rows[11].CreateButtonOverlays(
-                    new[] { pad }, new[] { w0 },
-                    new Action<int>[] { _ => LoadMouseControlled() });
+            // ── Row 6: [4] Expert + RAD [-][+] + INC [-][+] + [S+4] Expert ──
+            if (6 < rows.Count)
+                rows[6].CreateButtonOverlays(
+                    new[] { pad, setMinus, setPlus, spdMinus, spdPlus, c6 + pad },
+                    new[] { w0, btnW, setPlusW, btnW, spdPlusW, w6 },
+                    new Action<int>[] {
+                        _ => LoadPlayerSample(AIDifficulty.Expert),
+                        rdDec, rdInc,
+                        siDec, siInc,
+                        _ => SetAIDifficulty(AIDifficulty.Expert)
+                    });
 
-            // ── Row 13: col 0 reset ──
-            if (13 < rows.Count)
-                rows[13].CreateButtonOverlays(
-                    new[] { pad }, new[] { w0 },
-                    new Action<int>[] { _ => ReloadScene() });
+            // ── Row 7: [5] Keyboard + ANG [-][+] ──
+            if (7 < rows.Count)
+                rows[7].CreateButtonOverlays(
+                    new[] { pad, spdMinus, spdPlus },
+                    new[] { w0, btnW, spdPlusW },
+                    new Action<int>[] {
+                        _ => LoadUserControlled(),
+                        anDec, anInc
+                    });
+
+            // ── Row 8: [6] Mouse + [D] DEFAULTS ──
+            if (8 < rows.Count)
+                rows[8].CreateButtonOverlays(
+                    new[] { pad, c1 + pad },
+                    new[] { w0, w1 },
+                    new Action<int>[] {
+                        _ => LoadMouseControlled(),
+                        _ => { PongBootstrap.ClearOverrides(); SimulationTime.Instance?.SetTimeScale(1f); SettingsBridge.SetQualityLevel(3); QualityBridge.SetTier(QualityTier.Ultra); SettingsBridge.SetFontSize(20f); SettingsBridge.SetMasterVolume(0.5f); SettingsBridge.SetMusicVolume(0.25f); SettingsBridge.SetSfxVolume(0.75f); SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex); }
+                    });
 
             _buttonsCreated = true;
         }
@@ -1043,11 +1015,10 @@ namespace Pong.UI
 
             if (_playerProgram != null)
             {
-                string name = _playerProgram.ProgramName ?? "PaddleAI";
                 int inst = _playerProgram.Program?.Instructions?.Length ?? 0;
                 string status = _playerProgram.IsRunning
                     ? TUIColors.Fg(TUIColors.BrightGreen, "RUN")
-                    : TUIColors.Dimmed("STOP");
+                    : TUIColors.Dimmed("STP");
                 string tier = _playerInputMode == "keyboard"
                     ? TUIColors.Fg(TUIColors.BrightYellow, "(Keyboard)")
                     : _playerInputMode == "mouse"
@@ -1055,20 +1026,15 @@ namespace Pong.UI
                     : _playerScriptTier.HasValue
                     ? TUIColors.Fg(TUIColors.BrightMagenta, $"({_playerScriptTier.Value})")
                     : TUIColors.Dimmed("(custom)");
-                lines.Add($"  {name}");
-                lines.Add($"  {status} {tier}");
-                lines.Add($"  {TUIColors.Dimmed($"{inst} inst")}");
+                lines.Add($"  {status} {TUIColors.Dimmed($"{inst}i")} {tier}");
             }
             else
             {
                 lines.Add(TUIColors.Dimmed("  No program"));
-                lines.Add("");
-                lines.Add("");
             }
 
-            lines.Add("");
             var diffs = new[] { AIDifficulty.Easy, AIDifficulty.Medium, AIDifficulty.Hard, AIDifficulty.Expert };
-            lines.Add($"  {TUIColors.Dimmed("Load sample:")}");
+            lines.Add($"  {TUIColors.Dimmed("LOAD:")}");
             for (int i = 0; i < diffs.Length; i++)
             {
                 bool active = _playerScriptTier.HasValue && _playerScriptTier.Value == diffs[i];
@@ -1104,27 +1070,21 @@ namespace Pong.UI
 
             if (_ai != null && _ai.Program != null)
             {
-                string name = _ai.Program.ProgramName ?? "AI";
                 int inst = _ai.Program.Program?.Instructions?.Length ?? 0;
                 string status = _ai.Program.IsRunning
                     ? TUIColors.Fg(TUIColors.BrightGreen, "RUN")
-                    : TUIColors.Dimmed("STOP");
+                    : TUIColors.Dimmed("STP");
                 string diff = TUIColors.Fg(TUIColors.BrightMagenta, $"({_ai.Difficulty})");
-                lines.Add($"  {name}");
-                lines.Add($"  {status} {diff}");
-                lines.Add($"  {TUIColors.Dimmed($"{inst} inst")}");
+                lines.Add($"  {status} {TUIColors.Dimmed($"{inst}i")} {diff}");
             }
             else
             {
                 string aiDiff = _ai != null ? _ai.Difficulty.ToString() : "?";
-                lines.Add($"  {TUIColors.Dimmed("AI")}");
                 lines.Add($"  {TUIColors.Fg(TUIColors.BrightYellow, aiDiff)}");
-                lines.Add("");
             }
 
-            lines.Add("");
             var diffs = new[] { AIDifficulty.Easy, AIDifficulty.Medium, AIDifficulty.Hard, AIDifficulty.Expert };
-            lines.Add($"  {TUIColors.Dimmed("Set AI:")}");
+            lines.Add($"  {TUIColors.Dimmed("LOAD:")}");
             for (int i = 0; i < diffs.Length; i++)
             {
                 bool active = _ai != null && _ai.Difficulty == diffs[i];
@@ -1142,9 +1102,9 @@ namespace Pong.UI
 
         private string[] BuildTitleColumn()
         {
-            var art = BuildAsciiArt();
-            int artWidth = AsciiWords[0][0].Length + 2; // inner + border chars
             int colW = ColWidth(3);
+            var art = BuildAsciiArt(colW);
+            int artWidth = art.Length > 0 ? VisibleLen(art[0]) : 0;
             int pad = Mathf.Max(0, (colW - artWidth) / 2);
             if (pad > 0)
             {
@@ -1156,6 +1116,21 @@ namespace Pong.UI
             return art;
         }
 
+        /// <summary>Count visible (non-tag) characters in a rich-text string.</summary>
+        private static int VisibleLen(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return 0;
+            int count = 0;
+            bool inTag = false;
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (text[i] == '<') { inTag = true; continue; }
+                if (text[i] == '>') { inTag = false; continue; }
+                if (!inTag) count++;
+            }
+            return count;
+        }
+
         // ── Column 2: MATCH ─────────────────────────────────────
 
         private string[] BuildMatchColumn()
@@ -1164,15 +1139,17 @@ namespace Pong.UI
 
             if (_match != null)
             {
+                string emdash = "\u2014";
+                lines.Add($"  {TUIColors.Fg(TUIColors.BrightCyan, $"{_match.LeftScore}")} {emdash} {TUIColors.Fg(TUIColors.BrightCyan, "YOU")}");
+                lines.Add($"  {TUIColors.Fg(TUIColors.BrightMagenta, $"{_match.RightScore}")} {emdash} {TUIColors.Fg(TUIColors.BrightMagenta, "AI")}");
                 lines.Add("");
-                string you = TUIColors.Fg(TUIColors.BrightCyan, $"{_match.LeftScore}");
-                string them = TUIColors.Fg(TUIColors.BrightMagenta, $"{_match.RightScore}");
-                lines.Add($"  {you}  {TUIGlyphs.BoxH}{TUIGlyphs.BoxH}  {them}");
-                lines.Add($"  {TUIColors.Fg(TUIColors.BrightCyan, "YOU")}    {TUIColors.Fg(TUIColors.BrightMagenta, "AI")}");
-                lines.Add("");
-                lines.Add($"  M: {_match.MatchesPlayed}");
-                lines.Add($"  {TUIColors.Fg(TUIColors.BrightGreen, $"W:{_match.PlayerWins}")}");
-                lines.Add($"  {TUIColors.Fg(TUIColors.BrightMagenta, $"L:{_match.AIWins}")}");
+                int w = ColWidth(2);
+                string scoreLabel = "SCORE";
+                int pad = Mathf.Max(0, (w - scoreLabel.Length) / 2);
+                lines.Add(new string(' ', pad) + TUIColors.Dimmed(scoreLabel));
+                lines.Add($"  {TUIColors.Fg(TUIColors.BrightGreen, $"{_match.PlayerWins}")} {emdash} WIN");
+                lines.Add($"  {TUIColors.Fg(TUIColors.BrightMagenta, $"{_match.AIWins}")} {emdash} LOSS");
+                lines.Add($"  {_match.MatchesPlayed} {emdash} TOTAL");
             }
             else
             {
@@ -1191,23 +1168,25 @@ namespace Pong.UI
         /// </summary>
         private static string AdaptiveSliderRow(int colWidth, string label, float norm, string valueStr, bool showPct = false)
         {
+            // Reserve 1 char for column divider
+            int w = colWidth - 1;
             string minus = TUIColors.Fg(TUIColors.BrightCyan, "[-]");
             string plus = TUIColors.Fg(TUIColors.BrightCyan, "[+]");
 
-            if (colWidth < 6)
+            if (w < 6)
                 return $" {TUIColors.Fg(TUIColors.BrightCyan, "-")} {TUIColors.Fg(TUIColors.BrightCyan, "+")}";
-            if (colWidth < 10)
+            if (w < 10)
                 return $" {minus} {plus}";
-            if (colWidth < 16)
+            if (w < 16)
                 return $" {minus} {label} {plus}";
 
             // overhead: " [-] LBL VVVV [+]" = 1+3+1+lbl+1+val+1+3 = 10+lbl+val
             int overhead = 10 + label.Length + valueStr.Length;
-            if (colWidth < overhead + 4)
+            if (w < overhead + 4)
                 return $" {minus} {label} {valueStr} {plus}";
 
             // Full: label + bar + value
-            int barLen = colWidth - overhead;
+            int barLen = w - overhead;
             return $" {minus} {label}{TUIWidgets.ProgressBar(Mathf.Clamp01(norm), barLen, showPct)}{valueStr} {plus}";
         }
 
@@ -1226,6 +1205,14 @@ namespace Pong.UI
                 ? TUIColors.Fg(TUIColors.BrightYellow, " PAUSED") : "";
 
             lines.Add(AdaptiveSliderRow(w, "SPD", speedNorm, speedStr) + paused);
+            string pauseLabel = (sim != null && sim.isPaused) ? "PLAY" : "PAUSE";
+            lines.Add($" {TUIColors.Fg(TUIColors.BrightCyan, "[P]")} {pauseLabel}");
+            lines.Add("");
+
+            int cw = ColWidth(4);
+            string physLabel = "PHYSICS";
+            int physPad = Mathf.Max(0, (cw - physLabel.Length) / 2);
+            lines.Add(new string(' ', physPad) + TUIColors.Dimmed(physLabel));
 
             if (_bootstrap == null) _bootstrap = FindFirstObjectByType<PongBootstrap>();
             if (_bootstrap != null)
@@ -1234,15 +1221,6 @@ namespace Pong.UI
                 lines.Add(AdaptiveSliderRow(w, "INC", _bootstrap.ballSpeedIncrease / 2f, $"{_bootstrap.ballSpeedIncrease,4:F2}"));
                 lines.Add(AdaptiveSliderRow(w, "ANG", (_bootstrap.maxBounceAngle - 15f) / 70f, $"{_bootstrap.maxBounceAngle,4:F0}"));
             }
-            else
-            {
-                lines.Add("");
-                lines.Add("");
-                lines.Add("");
-            }
-            lines.Add($"  {TUIColors.Fg(TUIColors.BrightCyan, "[R]")}     Reset");
-            lines.Add($"  {TUIColors.Fg(TUIColors.BrightCyan, "[D]")}     Default");
-            lines.Add($"  {TUIColors.Fg(TUIColors.BrightCyan, "[P]")}     Pause");
             return lines.ToArray();
         }
 
@@ -1275,6 +1253,9 @@ namespace Pong.UI
                 lines.Add(AdaptiveSliderRow(w, "PDL", (_bootstrap.paddleHeight - 0.5f) / 4.5f, $"{_bootstrap.paddleHeight,4:F1}"));
                 lines.Add(AdaptiveSliderRow(w, "RAD", (_bootstrap.ballRadius - 0.1f) / 0.9f, $"{_bootstrap.ballRadius,4:F2}"));
             }
+
+            lines.Add("");
+            lines.Add($" {TUIColors.Fg(TUIColors.BrightCyan, "[D]")} DEFAULTS");
 
             return lines.ToArray();
         }
@@ -1353,19 +1334,20 @@ namespace Pong.UI
             for (int i = 0; i < total; i++) _revealThresholds[i] = UnityEngine.Random.value;
         }
 
-        private string[] BuildAsciiArt()
+        private string[] BuildAsciiArt(int maxWidth)
         {
             int wordIdx = (_asciiPhase / 2) % AsciiWordCount;
+            // Clamp inner width so art + 2 border chars fit within maxWidth
+            int innerW = AsciiWords[0][0].Length;
+            int clampedInner = Mathf.Min(innerW, Mathf.Max(0, maxWidth - 2));
             if ((_asciiPhase % 2) == 0)
             {
-                // Hold — show single word
-                return ColorizeWord(AsciiWords[wordIdx]);
+                return ColorizeWord(AsciiWords[wordIdx], clampedInner);
             }
             else
             {
-                // Decipher — transition from current word to next
                 int nextIdx = (wordIdx + 1) % AsciiWordCount;
-                return DecipherWord(AsciiWords[wordIdx], AsciiWords[nextIdx]);
+                return DecipherWord(AsciiWords[wordIdx], AsciiWords[nextIdx], clampedInner);
             }
         }
 
@@ -1406,32 +1388,37 @@ namespace Pong.UI
             return sb.ToString();
         }
 
-        private string[] ColorizeWord(string[] word)
+        private string[] ColorizeWord(string[] word, int innerW)
         {
-            int innerW = word[0].Length;
             int totalW = innerW + 2;
             var lines = new string[9];
             lines[0] = GradientBorderH('╔', '═', '╗', innerW);
             lines[1] = GradientBorderV(new string(' ', innerW));
             for (int i = 0; i < 5; i++)
-                lines[2 + i] = GradientBorderV(GradientRowRaw(word[i], totalW));
+            {
+                string row = word[i].Length > innerW ? word[i].Substring(0, innerW) : word[i].PadRight(innerW);
+                lines[2 + i] = GradientBorderV(GradientRowRaw(row, totalW));
+            }
             lines[7] = GradientBorderV(new string(' ', innerW));
             lines[8] = GradientBorderH('╚', '═', '╝', innerW);
             return lines;
         }
 
-        private string[] DecipherWord(string[] src, string[] tgt)
+        private string[] DecipherWord(string[] src, string[] tgt, int innerW)
         {
             float progress = Mathf.Clamp01(_asciiTimer / AsciiAnim);
-            int innerW = tgt[0].Length;
             int totalW = innerW + 2;
             var lines = new string[9];
 
             lines[0] = GradientBorderH('╔', '═', '╗', innerW);
             lines[1] = GradientBorderV(new string(' ', innerW));
             for (int r = 0; r < 5; r++)
+            {
+                string s = src[r].Length > innerW ? src[r].Substring(0, innerW) : src[r].PadRight(innerW);
+                string t = tgt[r].Length > innerW ? tgt[r].Substring(0, innerW) : tgt[r].PadRight(innerW);
                 lines[2 + r] = GradientBorderV(
-                    DecipherRowRaw(src[r], tgt[r], progress, r * innerW, totalW));
+                    DecipherRowRaw(s, t, progress, r * innerW, totalW));
+            }
             lines[7] = GradientBorderV(new string(' ', innerW));
             lines[8] = GradientBorderH('╚', '═', '╝', innerW);
             return lines;
