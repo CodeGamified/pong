@@ -204,10 +204,15 @@ set_target_y(get_mouse_y())
             _opAccumulator = 0f;
         }
 
-        /// <summary>Jump to serve handler when ball is served.</summary>
+        /// <summary>Jump to serve handler when ball is served toward this paddle.</summary>
         private void OnBallServed()
         {
             if (_executor?.State == null || _servePC < 0) return;
+            // Only react if the ball is heading toward this paddle
+            bool headingRight = _ball.Velocity.x > 0;
+            if ((headingRight && _paddle.Side != PaddleSide.Right) ||
+                (!headingRight && _paddle.Side != PaddleSide.Left))
+                return;
             JumpToHandler(_servePC);
         }
 
