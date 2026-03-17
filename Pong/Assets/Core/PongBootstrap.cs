@@ -183,6 +183,7 @@ namespace Pong.Core
         private AudioBridge.EngineHandlers _engineAudio;
         private PongHapticProvider _hapticProvider;
         private HapticBridge.EngineHandlers _engineHaptic;
+        private Equalizer _equalizer;
 
         // Persistence (from .engine)
         private PongPersistenceManager _persistence;
@@ -230,6 +231,11 @@ namespace Pong.Core
         // UPDATE — camera click-to-follow
         // =================================================================
 
+        // Live-settings dirty tracking
+        private float _prevCourtW, _prevCourtH, _prevPaddleH, _prevBallRad;
+        private float _prevBallSpd, _prevSpdInc, _prevBounceAng;
+        private bool _liveSettingsReady;
+
         private void Update()
         {
             HandleScrollZoom();
@@ -238,6 +244,7 @@ namespace Pong.Core
             HandleCameraEscape();
             UpdateBallLight();
             UpdateBloomScale();
+            ApplyLiveSettings();
         }
 
         private void HandleScrollZoom()
@@ -530,6 +537,134 @@ namespace Pong.Core
         }
 
         // =================================================================
+        // LIVE SETTINGS
+        // =================================================================
+
+        private void InitLiveSettingsTracking()
+        {
+            _prevCourtW = courtWidth;
+            _prevCourtH = courtHeight;
+            _prevPaddleH = paddleHeight;
+            _prevBallRad = ballRadius;
+            _prevBallSpd = ballStartSpeed;
+            _prevSpdInc = ballSpeedIncrease;
+            _prevBounceAng = maxBounceAngle;
+            _liveSettingsReady = true;
+        }
+
+        private void ApplyLiveSettings()
+        {
+            if (!_liveSettingsReady || _ball == null || _court == null) return;
+
+            // Always push physics params (cheap, no dirty check needed)
+            _ball.UpdateSettings(ballStartSpeed, ballMaxSpeed, ballSpeedIncrease,
+                                 ballRadius, maxBounceAngle, courtWidth, courtHeight);
+
+            // Paddle height / court height → update paddles
+            bool paddlesDirty = !Mathf.Approximately(_prevPaddleH, paddleHeight) ||
+                                !Mathf.Approximately(_prevCourtH, courtHeight);
+            if (paddlesDirty)
+            {
+                if (_leftPaddle != null) _leftPaddle.UpdateSettings(paddleHeight, courtHeight);
+                if (_rightPaddle != null) _rightPaddle.UpdateSettings(paddleHeight, courtHeight);
+            }
+
+            // Court geometry changed → rebuild visuals, reposition paddles/goals
+            bool courtDirty = !Mathf.Approximately(_prevCourtW, courtWidth) ||
+                              !Mathf.Approximately(_prevCourtH, courtHeight);
+            if (courtDirty)
+            {
+                _court.Width = courtWidth;
+                _court.Height = courtHeight;
+                _court.RebuildVisual();
+
+                // Reposition paddles
+                float halfW = courtWidth / 2f;
+                if (_leftPaddle != null)
+                    _leftPaddle.transform.position = new Vector3(-halfW + paddleOffset, _leftPaddle.currentY, 0f);
+                if (_rightPaddle != null)
+                    _rightPaddle.transform.position = new Vector3(halfW - paddleOffset, _rightPaddle.currentY, 0f);
+
+                // Reposition goal zones
+                RebuildGoalZoneVisuals();
+                if (_leftGoalVisual.Root != null)
+                    _leftGoalVisual.Root.transform.position = new Vector3(-halfW - 0.5f, 0f, 0f);
+                if (_rightGoalVisual.Root != null)
+                    _rightGoalVisual.Root.transform.position = new Vector3(halfW + 0.5f, 0f, 0f);
+            }
+
+            // Paddle height changed → rebuild paddle visuals
+            if (!Mathf.Approximately(_prevPaddleH, paddleHeight))
+            {
+                RebuildPaddleVisual(_leftPaddle, ref _leftPaddleVisual, PaddleSide.Left);
+                RebuildPaddleVisual(_rightPaddle, ref _rightPaddleVisual, PaddleSide.Right);
+            }
+
+            // Ball radius changed → rebuild ball visual
+            if (!Mathf.Approximately(_prevBallRad, ballRadius))
+                RebuildBallVisual();
+
+            // Safety: if ball is out of bounds (court shrank past it), re-serve
+            if (_ball.IsOutOfBounds && _match != null && _match.MatchInProgress)
+            {
+                _ball.Stop();
+                _match.ForceReserve();
+            }
+
+            // Update dirty tracking
+            _prevCourtW = courtWidth;
+            _prevCourtH = courtHeight;
+            _prevPaddleH = paddleHeight;
+            _prevBallRad = ballRadius;
+            _prevBallSpd = ballStartSpeed;
+            _prevSpdInc = ballSpeedIncrease;
+            _prevBounceAng = maxBounceAngle;
+        }
+
+        private void RebuildPaddleVisual(PongPaddle paddle, ref AssemblyResult visual, PaddleSide side)
+        {
+            if (paddle == null) return;
+            if (visual.Root != null)
+                Destroy(visual.Root);
+            var blueprint = new PongPaddleBlueprint(paddleHeight, paddleThickness, side);
+            visual = ProceduralAssembler.BuildWithVisualState(blueprint, _palette);
+            if (visual.Root != null)
+                visual.Root.transform.SetParent(paddle.transform, false);
+        }
+
+        private void RebuildBallVisual()
+        {
+            if (_ball == null) return;
+            if (_ballVisual.Root != null)
+                Destroy(_ballVisual.Root);
+            var blueprint = new PongBallBlueprint(ballRadius);
+            _ballVisual = ProceduralAssembler.BuildWithVisualState(blueprint, _palette);
+            if (_ballVisual.Root != null)
+                _ballVisual.Root.transform.SetParent(_ball.transform, false);
+        }
+
+        private void RebuildGoalZoneVisuals()
+        {
+            float depth = 0.5f;
+
+            if (_leftGoalVisual.Root != null)
+                Destroy(_leftGoalVisual.Root);
+            var leftBp = new PongGoalZoneBlueprint(courtHeight, depth, PaddleSide.Left);
+            _leftGoalVisual = ProceduralAssembler.BuildWithVisualState(leftBp, _palette);
+
+            if (_rightGoalVisual.Root != null)
+                Destroy(_rightGoalVisual.Root);
+            var rightBp = new PongGoalZoneBlueprint(courtHeight, depth, PaddleSide.Right);
+            _rightGoalVisual = ProceduralAssembler.BuildWithVisualState(rightBp, _palette);
+
+            if (QualityBridge.CurrentTier == QualityTier.Ultra)
+            {
+                SetPassiveGlow(_leftGoalVisual, "zone", new Color(0f, 1.2f, 1.2f));
+                SetPassiveGlow(_rightGoalVisual, "zone", new Color(1.2f, 0.24f, 0.96f));
+            }
+        }
+
+        // =================================================================
         // BOOTSTRAP
         // =================================================================
 
@@ -564,6 +699,7 @@ namespace Pong.Core
             if (enableTUI) CreateTUI();
 
             WireEvents();
+            InitLiveSettingsTracking();
             StartCoroutine(RunBootSequence());
         }
 
@@ -775,7 +911,7 @@ namespace Pong.Core
         {
             var go = new GameObject("PongTUI");
             _tuiManager = go.AddComponent<PongTUIManager>();
-            _tuiManager.Initialize(_match, _playerProgram, _leaderboard, _aiController);
+            _tuiManager.Initialize(_match, _playerProgram, _leaderboard, _aiController, _equalizer);
             Log("Created PongTUI");
         }
 
@@ -817,7 +953,10 @@ namespace Pong.Core
             _hapticProvider = new PongHapticProvider();
             _engineHaptic = HapticBridge.ForEngine(_hapticProvider, getTimeScale);
 
-            Log("Created AudioBridge + HapticBridge (synth tones + haptic)");
+            // Equalizer (feeds TUI EQ visualization)
+            _equalizer = new Equalizer(_audioProvider);
+
+            Log("Created AudioBridge + HapticBridge + Equalizer (synth tones + haptic + EQ)");
         }
 
         // =================================================================

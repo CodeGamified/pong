@@ -6,6 +6,7 @@ using UnityEngine.UI;
 using TMPro;
 using CodeGamified.TUI;
 using CodeGamified.Settings;
+using CodeGamified.Audio;
 using Pong.Game;
 using Pong.AI;
 using Pong.Scripting;
@@ -19,9 +20,9 @@ namespace Pong.UI
     /// Layout (left/right independent, middle 34% is game view):
     ///   ┌────────────────────────────┐                ┌────────────────────────────┐
     ///   │ YOUR CODE                  │   GAME VIEW    │ AI CODE                    │
-    ///   │ SOURCE ┆ MACHINE ┆ STATE   │   (34% open)   │ SOURCE ┆ MACHINE ┆ STATE   │
+    ///   │ SOURCE ┆ MACHINE ┆ STATE   │   (34% open)   │ STATE ┆ MACHINE ┆ SOURCE   │
     ///   ├────────────────────────────┴────────────────┴────────────────────────────┤
-    ///   │ SCRIPT ┆ AI ┆ MATCH ┆ PONG ┆ CONTROLS ┆ SETTINGS ┆ AUDIO              │
+    ///   │ SCRIPT ┆ SETTINGS ┆ MATCH ┆ PONG ┆ CONTROLS ┆ AUDIO ┆ OPPONENT        │
     ///   └─────────────────────────────────────────────────────────────────────────┘
     ///   All column dividers (┆) are draggable.
     ///   MATCH┆PONG and PONG┆CONTROLS draggers are stickied to the
@@ -34,6 +35,7 @@ namespace Pong.UI
         private PaddleProgram _playerProgram;
         private PongLeaderboard _leaderboard;
         private PongAIController _ai;
+        private Equalizer _equalizer;
 
         // Canvas
         private Canvas _canvas;
@@ -61,12 +63,14 @@ namespace Pong.UI
         private RectTransform[] _allPanelRects;
 
         public void Initialize(PongMatchManager match, PaddleProgram program,
-                               PongLeaderboard leaderboard, PongAIController ai)
+                               PongLeaderboard leaderboard, PongAIController ai,
+                               Equalizer equalizer = null)
         {
             _match = match;
             _playerProgram = program;
             _leaderboard = leaderboard;
             _ai = ai;
+            _equalizer = equalizer;
             _fontSize = SettingsBridge.FontSize;
 
             BuildCanvas();
@@ -158,6 +162,7 @@ namespace Pong.UI
             _aiDebugger.InitializeProgrammatic(GetFont(), _fontSize,
                 _aiDebuggerRect.GetComponent<Image>());
             _aiDebugger.SetTitle("AI CODE");
+            _aiDebugger.SetMirrorPanels(true);
             _aiDebugger.Bind(_ai.Program);
 
             // ── Status Panel (unified 6-column) ──
@@ -168,6 +173,8 @@ namespace Pong.UI
             _statusPanel.InitializeProgrammatic(GetFont(), _fontSize - 1f,
                 _statusPanelRect.GetComponent<Image>());
             _statusPanel.Bind(_match, _playerProgram, _ai);
+            if (_equalizer != null)
+                _statusPanel.BindEqualizer(_equalizer);
 
             // Track all for teardown
             _allPanelRects = new[]
@@ -194,9 +201,10 @@ namespace Pong.UI
             yield return new WaitForEndOfFrame();
             yield return new WaitForEndOfFrame();
 
-            // Status panel draggers: 0=YOU|AI, 1=AI|MATCH, 2=MATCH|PONG,
-            //   3=PONG|CONTROLS, 4=CONTROLS|SETTINGS, 5=SETTINGS|AUDIO
+            // Status panel draggers: 0=YOU|SETTINGS, 1=SETTINGS|MATCH, 2=MATCH|PONG,
+            //   3=PONG|CONTROLS, 4=CONTROLS|AUDIO, 5=AUDIO|OPPONENT
             // Debugger draggers: 0=SOURCE|MACHINE, 1=MACHINE|STATE
+            // AI debugger is mirrored: 0=STATE|MACHINE, 1=MACHINE|SOURCE
             LinkDraggerPair(_statusPanel, 0, _playerDebugger, 0);
             LinkDraggerPair(_statusPanel, 1, _playerDebugger, 1);
             LinkDraggerPair(_statusPanel, 4, _aiDebugger, 0);

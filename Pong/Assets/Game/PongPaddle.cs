@@ -55,6 +55,20 @@ namespace Pong.Game
             transform.position = pos;
         }
 
+        /// <summary>Hot-update paddle and court dimensions mid-session.</summary>
+        public void UpdateSettings(float height, float courtH)
+        {
+            PaddleHeight = height;
+            CourtHeight = courtH;
+            // Clamp current position to new bounds
+            float maxY = HalfCourtH - HalfPaddleH;
+            currentY = Mathf.Clamp(currentY, -maxY, maxY);
+            targetY = Mathf.Clamp(targetY, -maxY, maxY);
+            var pos = transform.position;
+            pos.y = currentY;
+            transform.position = pos;
+        }
+
         /// <summary>Set movement target (called by code/AI).</summary>
         public void SetTargetY(float y)
         {

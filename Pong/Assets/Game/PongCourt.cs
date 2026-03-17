@@ -37,7 +37,7 @@ namespace Pong.Game
             RebuildVisual();
         }
 
-        private void RebuildVisual()
+        public void RebuildVisual()
         {
             if (Visual.Root != null)
                 Destroy(Visual.Root);

@@ -138,6 +138,16 @@ namespace Pong.Game
                 prog.ResetExecution();
         }
 
+        /// <summary>Force a re-serve (e.g. ball went out of bounds due to live setting change).</summary>
+        public void ForceReserve()
+        {
+            if (!MatchInProgress) return;
+            _ball.Stop();
+            ResetPaddles();
+            PaddleSide toward = (Random.value > 0.5f) ? PaddleSide.Right : PaddleSide.Left;
+            ServeAfterDelay(toward);
+        }
+
         private void ServeAfterDelay(PaddleSide toward)
         {
             StartCoroutine(ServeCoroutine(toward));

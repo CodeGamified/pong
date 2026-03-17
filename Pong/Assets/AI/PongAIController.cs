@@ -66,37 +66,62 @@ namespace Pong.AI
             {
                 case AIDifficulty.Easy:
                     return @"# ""Tracker""
-set_target_y(get_ball_y())";
+set_target_y(
+    get_ball_y())";
 
                 case AIDifficulty.Medium:
                     return @"# ""Anticipator""
 # Lookahead
 set_target_y(
-    get_ball_y() + get_ball_vy() * 0.3)";
+    get_ball_y() + 
+    get_ball_vy() * 
+    0.3)";
 
                 case AIDifficulty.Hard:
                     return @"# ""Predictor""
 # Predict arrival
-set_target_y(
-    get_ball_y() +
-    get_ball_vy() * (
-        (get_paddle_x() - get_ball_x())
-        / get_ball_vx()))";
+def predict():
+    set_target_y(
+        get_ball_y() + 
+        get_ball_vy() * 
+        (get_paddle_x() - 
+        get_ball_x()) / 
+        get_ball_vx())
+serve:
+    predict()
+hit:
+    set_target_y(0)
+hit_opp:
+    predict()
+hit_wall:
+    predict()";
 
                 case AIDifficulty.Expert:
                     return @"# ""Strategist""
+h = get_court_height() / 2
+H = get_court_height() * 2
 serve:
     set_target_y(
-        get_ball_y() + get_ball_vy() 
-        * 
-        (get_paddle_x() - get_ball_x()) 
-        / 
+        get_ball_y() + 
+        get_ball_vy() * 
+        (get_paddle_x() - 
+        get_ball_x()) / 
         get_ball_vx())
+hit:
+    set_target_y(0)
 hit_opp:
-    m = (get_ball_y() + get_ball_vy() *
-        (get_paddle_x() - get_ball_x())
-        / get_ball_vx() + get_court_height() / 2) % (get_court_height() * 2)
-    set_target_y(min(m, get_court_height() * 2 - m) - get_court_height() / 2 + get_opponent_y() * 0.1)";
+    m = (get_ball_y() + 
+        get_ball_vy() *
+        (get_paddle_x() - 
+        get_ball_x()) / 
+        get_ball_vx() + 
+        h) % H
+    set_target_y(
+        min(m, H - m) - 
+        h)
+    move_target_y(
+        get_opponent_y() * 
+        0.2)";
                 default:
                     return "# Unknown difficulty";
             }

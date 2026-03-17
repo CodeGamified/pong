@@ -11,12 +11,37 @@ namespace Pong.Audio
     /// Generates retro blip/boop/buzz tones via AudioClip.Create() — zero asset files.
     /// Each method plays a one-shot tone through a shared AudioSource.
     /// </summary>
-    public class PongAudioProvider : IAudioProvider
+    public class PongAudioProvider : IAudioProvider, IEqualizerProvider
     {
         private static GameObject _persistentGO;
 
         private AudioSource _source;
         private AudioSource _musicSource;
+
+        // ── IEqualizerProvider ──
+        private const int EqBandCount = 8;
+        private readonly float[] _spectrum = new float[256];
+
+        public int BandCount => EqBandCount;
+
+        public bool GetBands(float[] bands)
+        {
+            if (_musicSource == null || !_musicSource.isPlaying)
+                return false;
+
+            AudioListener.GetSpectrumData(_spectrum, 0, FFTWindow.BlackmanHarris);
+
+            for (int b = 0; b < bands.Length && b < EqBandCount; b++)
+            {
+                int lo = (int)Mathf.Pow(2, b);
+                int hi = Mathf.Min((int)Mathf.Pow(2, b + 1), _spectrum.Length);
+                float sum = 0f;
+                for (int s = lo; s < hi; s++)
+                    sum += _spectrum[s];
+                bands[b] = Mathf.Clamp01(sum * (b + 1) * 10f);
+            }
+            return true;
+        }
 
         // Pre-generated clips
         private AudioClip _blip;       // paddle hit — 808 kick

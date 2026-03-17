@@ -70,6 +70,33 @@ namespace Pong.Game
             OnServed?.Invoke();
         }
 
+        /// <summary>Hot-update config without resetting ball state.</summary>
+        public void UpdateSettings(float startSpeed, float maxSpeed, float speedIncrease,
+                                   float radius, float maxBounceAngle,
+                                   float courtWidth, float courtHeight)
+        {
+            _startSpeed = startSpeed;
+            _maxSpeed = maxSpeed;
+            _speedIncrease = speedIncrease;
+            _radius = radius;
+            _maxBounceAngle = maxBounceAngle;
+            _courtWidth = courtWidth;
+            _courtHeight = courtHeight;
+        }
+
+        /// <summary>True when ball position is outside current court bounds.</summary>
+        public bool IsOutOfBounds
+        {
+            get
+            {
+                if (!IsActive) return false;
+                // Allow 2 units of slack beyond the wall for normal goal scoring
+                float slack = 2f;
+                return Mathf.Abs(Position.x) > HalfW + slack ||
+                       Mathf.Abs(Position.y) > HalfH + slack;
+            }
+        }
+
         public void Stop()
         {
             IsActive = false;

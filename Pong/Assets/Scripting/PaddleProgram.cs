@@ -42,6 +42,7 @@ namespace Pong.Scripting
         private float _opAccumulator;
 
         // Event handler addresses (from compiled metadata)
+        private int _hitPC = -1;
         private int _hitOppPC = -1;
         private int _hitWallPC = -1;
         private int _servePC = -1;
@@ -65,7 +66,7 @@ namespace Pong.Scripting
 #   get_court_height()  → court height
 #   get_court_width()   → court width
 #   wait_for_opponent_hit() → sleep until opponent hits ball
-#   hit_opp: / hit_wall: / serve: → event hooks (run body on event)
+#   hit: / hit_opp: / hit_wall: / serve: → event hooks (run body on event)
 #
 # This 1-line script is the simplest AI:
 set_target_y(get_ball_y())
@@ -134,7 +135,7 @@ set_target_y(get_mouse_y())
                 // But for hook-based scripts, stay halted (idle) until event fires
                 if (_executor.State.IsHalted)
                 {
-                    if (_hitOppPC >= 0 || _hitWallPC >= 0 || _servePC >= 0)
+                    if (_hitPC >= 0 || _hitOppPC >= 0 || _hitWallPC >= 0 || _servePC >= 0)
                         break; // hook-based: stay idle, events will wake us
                     _executor.State.PC = 0;
                     _executor.State.IsHalted = false;
@@ -160,6 +161,7 @@ set_target_y(get_mouse_y())
             var program = PythonCompiler.Compile(source, name, _compilerExt);
 
             // Extract event handler addresses from compiled metadata
+            _hitPC = program.Metadata.TryGetValue("handler:hit", out var hit) ? (int)hit : -1;
             _hitOppPC = program.Metadata.TryGetValue("handler:hit_opp", out var opp) ? (int)opp : -1;
             _hitWallPC = program.Metadata.TryGetValue("handler:hit_wall", out var wall) ? (int)wall : -1;
             _servePC = program.Metadata.TryGetValue("handler:serve", out var srv) ? (int)srv : -1;
@@ -216,12 +218,18 @@ set_target_y(get_mouse_y())
             JumpToHandler(_servePC);
         }
 
-        /// <summary>Wake script from wait_for_opponent_hit() or jump to hit_opp handler.</summary>
+        /// <summary>Wake script from wait_for_opponent_hit() or jump to hit_opp/hit handler.</summary>
         private void OnBallPaddleHit(PaddleSide side)
         {
             if (_executor?.State == null) return;
-            // Only react to the opponent's side hitting
-            if (side == _paddle.Side) return;
+
+            // Own paddle hit → jump to hit: handler
+            if (side == _paddle.Side)
+            {
+                if (_hitPC >= 0)
+                    JumpToHandler(_hitPC);
+                return;
+            }
 
             if (_hitOppPC >= 0)
             {
