@@ -44,7 +44,7 @@ PongAIController       → built-in AI opponents (Easy/Medium/Hard/Expert)
 
 ### Engine Submodule
 
-The `engine/` folder is a shared Git submodule ([CodeGamified.Engine](Pong/Assets/engine/CodeGamified.Engine/README.md)) providing:
+The `engine/` folder is a shared Git submodule ([CodeGamified.Engine](Pong/Assets/Engine/CodeGamified.Engine/README.md)) providing:
 
 - **Python compiler** — subset of Python → AST → RISC-like bytecode
 - **Code executor** — time-scale-aware, deterministic instruction execution

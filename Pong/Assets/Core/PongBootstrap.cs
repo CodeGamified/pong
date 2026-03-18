@@ -31,7 +31,6 @@ namespace Pong.Core
     ///   - .engine submodule gives us TUI + Code Execution for free
     ///   - Players don't use WASD — they WRITE CODE to control their paddle
     ///   - "Unit test" your script against Easy/Medium/Hard/Expert AI
-    ///   - Crank time scale to run thousands of matches at warp speed
     ///
     /// Attach to a GameObject. Press Play → Pong appears.
     /// </summary>
@@ -192,8 +191,6 @@ namespace Pong.Core
         private AssemblyResult _leftGoalVisual;
         private AssemblyResult _rightGoalVisual;
 
-        // Warp (from .engine Time)
-        private PongWarpController _warpController;
 
         // Ball trail
         private PongBallTrail _ballTrail;
@@ -687,7 +684,6 @@ namespace Pong.Core
             CreateBall();
             CreateBallTrail();
             CreateMatchManager();
-            CreateWarpController();
             CreateAI();
             CreateInputProvider();
 
@@ -1027,18 +1023,6 @@ namespace Pong.Core
         }
 
         // =================================================================
-        // WARP CONTROLLER (.engine Time)
-        // =================================================================
-
-        private void CreateWarpController()
-        {
-            var go = new GameObject("WarpController");
-            _warpController = go.AddComponent<PongWarpController>();
-            _warpController.Initialize(_match);
-            Log("Created PongWarpController ([F5] to warp 10 matches)");
-        }
-
-        // =================================================================
         // BALL TRAIL
         // =================================================================
 
@@ -1208,16 +1192,6 @@ namespace Pong.Core
                 _playerProgram.Executor.OnHalted += _engineHaptic.Halted;
             }
 
-            // ── Warp audio hooks ──
-            if (_warpController != null)
-            {
-                var timeAudio = AudioBridge.ForTime(
-                    _audioProvider, () => SimulationTime.Instance?.timeScale ?? 1f);
-                _warpController.OnWarpArrived += timeAudio.WarpArrived;
-                _warpController.OnWarpCancelled += timeAudio.WarpCancelled;
-                _warpController.OnWarpComplete += timeAudio.WarpComplete;
-            }
-
             // ── Persistence: mark dirty on every code upload ──
             if (_persistence != null && _match != null)
             {
@@ -1249,7 +1223,6 @@ namespace Pong.Core
             Log($"  Audio        │ ✅ Synth tones + HapticBridge");
             Log($"  Persistence  │ {(enablePersistence ? (useLocalGitProvider ? "✅ LocalGitProvider" : "✅ MemoryGitProvider") : "── disabled")}");
             Log($"  Procedural   │ ✅ 3D court/paddles/ball/goals/trail");
-            Log($"  Warp         │ ✅ [F5] warp 10 matches");
             Log($"  Editor       │ ✅ PongEditorExtension ready");
             Log($"  Camera       │ ✅ Click paddle/ball to follow, [ESC] sway");
             Log($"  Settings     │ ✅ SettingsBridge (Quality={SettingsBridge.QualityLevel}, Font={SettingsBridge.FontSize}pt)");
