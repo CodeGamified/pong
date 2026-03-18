@@ -16,7 +16,7 @@ namespace Pong.Core
         protected override void OnInitialize()
         {
             timeScalePresets = new float[]
-                { 0f, 0.25f, 0.5f, 1f, 2f, 5f, 10f, 50f, 100f, 500f, 1000f };
+                { 0f, 0.25f, 0.5f, 1f, 2f, 5f, 10f, 50f, 100f };
             currentPresetIndex = 3; // Start at 1x
         }
 

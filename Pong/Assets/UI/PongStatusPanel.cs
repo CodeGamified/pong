@@ -40,24 +40,8 @@ namespace Pong.UI
         private TUIColumnDragger[] _colDraggers;
         private bool _columnsReady;
 
-        // ── Audio slider overlays ───────────────────────────────
-        private Slider _masterSlider;
-        private Slider _musicSlider;
-        private Slider _sfxSlider;
-
-        // ── Controls / Quality slider overlays ──────────────────
-        private Slider _speedSlider;
-        private Slider _qualitySlider;
-        private Slider _fontSlider;
-
-        // ── Bootstrap parameter sliders ─────────────────────────
-        private Slider _courtWSlider;
-        private Slider _courtHSlider;
-        private Slider _paddleHSlider;
-        private Slider _ballRadSlider;
-        private Slider _ballSpdSlider;
-        private Slider _spdIncSlider;
-        private Slider _bounceSlider;
+        // ── Overlay bindings (sliders + buttons) ────────────────
+        private TUIOverlayBinding _overlays;
         private PongBootstrap _bootstrap;
 
         // ── ASCII art animation ─────────────────────────────────
@@ -108,9 +92,6 @@ namespace Pong.UI
         };
 
         private bool IsExpanded => totalRows > 1;
-
-        // ── Button overlays ─────────────────────────────────────
-        private bool _buttonsCreated;
 
         // ═══════════════════════════════════════════════════════════════
         // LIFECYCLE
@@ -247,10 +228,7 @@ namespace Pong.UI
                 }
             }
 
-            CreateAudioSliders();
-            CreateControlsSliders();
-            CreateQualityFontSliders();
-            CreateOrRepositionButtons();
+            BuildAndApplyOverlays();
         }
 
         private void ComputeColumnPositions()
@@ -280,12 +258,9 @@ namespace Pong.UI
             ApplyNPanelResize(_colPositions);
             _hoverColumnPositions = _colPositions;
 
-            // Reposition all sliders — any boundary change can shift columns
-            CreateQualityFontSliders();
-            CreateControlsSliders();
-            CreateAudioSliders();
-
-            CreateOrRepositionButtons();
+            // Reposition all overlays
+            if (_overlays != null)
+                _overlays.Apply(rows, _colPositions, totalChars);
         }
 
         private void UpdateDraggerLimits(int draggerIdx)
@@ -389,255 +364,124 @@ namespace Pong.UI
         }
 
         // ═══════════════════════════════════════════════════════════════
-        // AUDIO SLIDERS
+        // OVERLAY BINDINGS (sliders + buttons via TUIOverlayBinding)
         // ═══════════════════════════════════════════════════════════════
 
-        private void CreateAudioSliders()
+        // Full-column button layout for game-specific buttons (script load, AI, etc.)
+        static readonly Func<int, int, (int, int)> FullBtnLayout =
+            (cs, cw) => (cs + 2, Mathf.Max(4, cw - 2));
+
+        private void BuildAndApplyOverlays()
         {
-            if (_colPositions == null || rows.Count <= 3) return;
-
-            const int barOffset = 8;
-            const int barRightPad = 10;
-            int barWidth = Mathf.Max(0, ColWidth(5) - barOffset - barRightPad);
-            int sliderStart = _colPositions[5] + barOffset;
-            bool slidersVisible = barWidth >= 4;
-
-            if (_masterSlider != null)
+            if (_overlays == null)
             {
-                _masterSlider.gameObject.SetActive(slidersVisible);
-                _musicSlider.gameObject.SetActive(slidersVisible);
-                _sfxSlider.gameObject.SetActive(slidersVisible);
-                if (slidersVisible)
+                _overlays = new TUIOverlayBinding();
+                if (_bootstrap == null)
+                    _bootstrap = FindFirstObjectByType<PongBootstrap>();
+
+                // ── Audio sliders (col 5) ──
+                _overlays.Slider(1, 5,
+                    () => SettingsBridge.MasterVolume,
+                    v => SettingsBridge.SetMasterVolume(v));
+                _overlays.Slider(2, 5,
+                    () => SettingsBridge.MusicVolume,
+                    v => SettingsBridge.SetMusicVolume(v));
+                _overlays.Slider(3, 5,
+                    () => SettingsBridge.SfxVolume,
+                    v => SettingsBridge.SetSfxVolume(v));
+
+                // ── Controls sliders (col 4) ──
+                _overlays.Slider(1, 4,
+                    () => SpeedToSlider(SimulationTime.Instance != null ? SimulationTime.Instance.timeScale : 1f),
+                    v => SimulationTime.Instance?.SetTimeScale(SliderToSpeed(v)),
+                    minWidth: 10);
+                if (_bootstrap != null)
                 {
-                    rows[1].RepositionSliderOverlay(sliderStart, barWidth);
-                    rows[2].RepositionSliderOverlay(sliderStart, barWidth);
-                    rows[3].RepositionSliderOverlay(sliderStart, barWidth);
+                    _overlays.Slider(2, 4,
+                        () => (_bootstrap.ballStartSpeed - 0.5f) / 9.5f,
+                        v => { if (_bootstrap != null) _bootstrap.ballStartSpeed = 0.5f + v * 9.5f; },
+                        minWidth: 10, step: 0.5f / 9.5f);
+                    _overlays.Slider(3, 4,
+                        () => _bootstrap.ballSpeedIncrease / 2f,
+                        v => { if (_bootstrap != null) _bootstrap.ballSpeedIncrease = v * 2f; },
+                        minWidth: 10, step: 0.025f);
+                    _overlays.Slider(4, 4,
+                        () => (_bootstrap.maxBounceAngle - 15f) / 70f,
+                        v => { if (_bootstrap != null) _bootstrap.maxBounceAngle = 15f + v * 70f; },
+                        minWidth: 10, step: 5f / 70f);
                 }
-                return;
+
+                // ── Quality / Font sliders (col 1) ──
+                _overlays.Slider(1, 1,
+                    () => SettingsBridge.QualityLevel / 3f,
+                    v => { int lv = Mathf.RoundToInt(v * 3f); SettingsBridge.SetQualityLevel(lv); QualityBridge.SetTier((QualityTier)lv); },
+                    minWidth: 10, step: 1f / 3f);
+                _overlays.Slider(2, 1,
+                    () => FontToSlider(SettingsBridge.FontSize),
+                    v => SettingsBridge.SetFontSize(SliderToFont(v)),
+                    minWidth: 10, step: 1f / 40f);
+                if (_bootstrap != null)
+                {
+                    _overlays.Slider(3, 1,
+                        () => (_bootstrap.courtWidth - 8f) / 24f,
+                        v => { if (_bootstrap != null) _bootstrap.courtWidth = 8f + v * 24f; },
+                        minWidth: 10, step: 1f / 24f);
+                    _overlays.Slider(4, 1,
+                        () => (_bootstrap.courtHeight - 5f) / 15f,
+                        v => { if (_bootstrap != null) _bootstrap.courtHeight = 5f + v * 15f; },
+                        minWidth: 10, step: 1f / 15f);
+                    _overlays.Slider(5, 1,
+                        () => (_bootstrap.paddleHeight - 0.5f) / 4.5f,
+                        v => { if (_bootstrap != null) _bootstrap.paddleHeight = 0.5f + v * 4.5f; },
+                        minWidth: 10, step: 0.25f / 4.5f);
+                    _overlays.Slider(6, 1,
+                        () => (_bootstrap.ballRadius - 0.1f) / 0.9f,
+                        v => { if (_bootstrap != null) _bootstrap.ballRadius = 0.1f + v * 0.9f; },
+                        minWidth: 10, step: 0.05f / 0.9f);
+                }
+
+                // ── Buttons ──
+                RegisterButtonOverlays();
             }
 
-            _masterSlider = rows[1].CreateSliderOverlay(sliderStart, barWidth);
-            _masterSlider.SetValueWithoutNotify(SettingsBridge.MasterVolume);
-            _masterSlider.onValueChanged.AddListener(v => SettingsBridge.SetMasterVolume(v));
-
-            _musicSlider = rows[2].CreateSliderOverlay(sliderStart, barWidth);
-            _musicSlider.SetValueWithoutNotify(SettingsBridge.MusicVolume);
-            _musicSlider.onValueChanged.AddListener(v => SettingsBridge.SetMusicVolume(v));
-
-            _sfxSlider = rows[3].CreateSliderOverlay(sliderStart, barWidth);
-            _sfxSlider.SetValueWithoutNotify(SettingsBridge.SfxVolume);
-            _sfxSlider.onValueChanged.AddListener(v => SettingsBridge.SetSfxVolume(v));
+            _overlays.Apply(rows, _colPositions, totalChars);
         }
 
-        // ═══════════════════════════════════════════════════════════════
-        // CONTROLS / QUALITY SLIDERS
-        // ═══════════════════════════════════════════════════════════════
-
-        private void CreateControlsSliders()
+        private void RegisterButtonOverlays()
         {
-            if (_colPositions == null || rows.Count <= 1) return;
-            if (_bootstrap == null)
-                _bootstrap = FindFirstObjectByType<PongBootstrap>();
+            // Only game-specific buttons — slider [-][+] buttons are
+            // auto-created by TUIOverlayBinding when sliders register.
 
-            const int barOffset = 8;
-            const int barRightPad = 10;
-            int barWidth = Mathf.Max(0, ColWidth(4) - barOffset - barRightPad);
-            int sliderStart = _colPositions[4] + barOffset;
-            bool slidersVisible = barWidth >= 10;
+            // Row 2: [P] PAUSE
+            _overlays.Button(2, 4, FullBtnLayout, _ => SimulationTime.Instance?.TogglePause());
 
-            if (_speedSlider != null)
-            {
-                _speedSlider.gameObject.SetActive(slidersVisible);
-                SetRawSliderVisible(_ballSpdSlider, slidersVisible);
-                SetRawSliderVisible(_spdIncSlider, slidersVisible);
-                SetRawSliderVisible(_bounceSlider, slidersVisible);
-                if (slidersVisible)
-                {
-                    RepositionRawSlider(_speedSlider, rows[1].CharWidth, sliderStart, barWidth);
-                    if (_ballSpdSlider != null && 2 < rows.Count)
-                        RepositionRawSlider(_ballSpdSlider, rows[2].CharWidth, sliderStart, barWidth);
-                    if (_spdIncSlider != null && 3 < rows.Count)
-                        RepositionRawSlider(_spdIncSlider, rows[3].CharWidth, sliderStart, barWidth);
-                    if (_bounceSlider != null && 4 < rows.Count)
-                        RepositionRawSlider(_bounceSlider, rows[4].CharWidth, sliderStart, barWidth);
-                }
-                return;
-            }
+            // Row 3: [1] Easy + [S+1] Easy
+            _overlays.Button(3, 0, FullBtnLayout, _ => LoadPlayerSample(AIDifficulty.Easy));
+            _overlays.Button(3, 6, FullBtnLayout, _ => SetAIDifficulty(AIDifficulty.Easy));
 
-            _speedSlider = CreateRawSlider(1, sliderStart, barWidth);
-            var sim = SimulationTime.Instance;
-            float initialSpeed = sim != null ? sim.timeScale : 1f;
-            _speedSlider.SetValueWithoutNotify(SpeedToSlider(initialSpeed));
-            _speedSlider.onValueChanged.AddListener(v =>
-            {
-                SimulationTime.Instance?.SetTimeScale(SliderToSpeed(v));
-            });
+            // Row 4: [2] Medium + [S+2] Medium
+            _overlays.Button(4, 0, FullBtnLayout, _ => LoadPlayerSample(AIDifficulty.Medium));
+            _overlays.Button(4, 6, FullBtnLayout, _ => SetAIDifficulty(AIDifficulty.Medium));
 
-            if (_bootstrap == null) return;
+            // Row 5: [3] Hard + [S+3] Hard
+            _overlays.Button(5, 0, FullBtnLayout, _ => LoadPlayerSample(AIDifficulty.Hard));
+            _overlays.Button(5, 6, FullBtnLayout, _ => SetAIDifficulty(AIDifficulty.Hard));
 
-            _ballSpdSlider = CreateRawSlider(2, sliderStart, barWidth);
-            _ballSpdSlider.SetValueWithoutNotify((_bootstrap.ballStartSpeed - 0.5f) / 9.5f);
-            _ballSpdSlider.onValueChanged.AddListener(v => { if (_bootstrap != null) _bootstrap.ballStartSpeed = 0.5f + v * 9.5f; });
+            // Row 6: [4] Expert + [S+4] Expert
+            _overlays.Button(6, 0, FullBtnLayout, _ => LoadPlayerSample(AIDifficulty.Expert));
+            _overlays.Button(6, 6, FullBtnLayout, _ => SetAIDifficulty(AIDifficulty.Expert));
 
-            _spdIncSlider = CreateRawSlider(3, sliderStart, barWidth);
-            _spdIncSlider.SetValueWithoutNotify(_bootstrap.ballSpeedIncrease / 2f);
-            _spdIncSlider.onValueChanged.AddListener(v => { if (_bootstrap != null) _bootstrap.ballSpeedIncrease = v * 2f; });
+            // Row 7: [5] Keyboard
+            _overlays.Button(7, 0, FullBtnLayout, _ => LoadUserControlled());
 
-            _bounceSlider = CreateRawSlider(4, sliderStart, barWidth);
-            _bounceSlider.SetValueWithoutNotify((_bootstrap.maxBounceAngle - 15f) / 70f);
-            _bounceSlider.onValueChanged.AddListener(v => { if (_bootstrap != null) _bootstrap.maxBounceAngle = 15f + v * 70f; });
-        }
-
-        private void CreateQualityFontSliders()
-        {
-            if (_colPositions == null || rows.Count <= 2) return;
-            if (_bootstrap == null)
-                _bootstrap = FindFirstObjectByType<PongBootstrap>();
-
-            const int barOffset = 8;
-            const int barRightPad = 10;
-            int barWidth = Mathf.Max(0, ColWidth(1) - barOffset - barRightPad);
-            int sliderStart = _colPositions[1] + barOffset;
-            bool slidersVisible = barWidth >= 10;
-
-            if (_qualitySlider != null)
-            {
-                SetRawSliderVisible(_qualitySlider, slidersVisible);
-                SetRawSliderVisible(_fontSlider, slidersVisible);
-                if (slidersVisible)
-                {
-                    RepositionRawSlider(_qualitySlider, rows[1].CharWidth, sliderStart, barWidth);
-                    RepositionRawSlider(_fontSlider, rows[2].CharWidth, sliderStart, barWidth);
-                }
-                for (int r = 3; r <= 6; r++)
-                {
-                    Slider s = r switch { 3 => _courtWSlider, 4 => _courtHSlider, 5 => _paddleHSlider,
-                        _ => _ballRadSlider };
-                    if (s != null && r < rows.Count)
-                    {
-                        SetRawSliderVisible(s, slidersVisible);
-                        if (slidersVisible)
-                            RepositionRawSlider(s, rows[r].CharWidth, sliderStart, barWidth);
-                    }
-                }
-                return;
-            }
-
-            _qualitySlider = CreateRawSlider(1, sliderStart, barWidth);
-            _qualitySlider.SetValueWithoutNotify(SettingsBridge.QualityLevel / 3f);
-            _qualitySlider.onValueChanged.AddListener(v =>
-            {
-                int level = Mathf.RoundToInt(v * 3f);
-                SettingsBridge.SetQualityLevel(level);
-                QualityBridge.SetTier((QualityTier)level);
-            });
-
-            _fontSlider = CreateRawSlider(2, sliderStart, barWidth);
-            _fontSlider.SetValueWithoutNotify(FontToSlider(SettingsBridge.FontSize));
-            _fontSlider.onValueChanged.AddListener(v =>
-            {
-                SettingsBridge.SetFontSize(SliderToFont(v));
-            });
-
-            // Bootstrap parameter sliders (rows 3-6 in col 1)
-            if (_bootstrap == null) return;
-
-            _courtWSlider = CreateRawSlider(3, sliderStart, barWidth);
-            _courtWSlider.SetValueWithoutNotify((_bootstrap.courtWidth - 8f) / 24f);
-            _courtWSlider.onValueChanged.AddListener(v => { if (_bootstrap != null) _bootstrap.courtWidth = 8f + v * 24f; });
-
-            _courtHSlider = CreateRawSlider(4, sliderStart, barWidth);
-            _courtHSlider.SetValueWithoutNotify((_bootstrap.courtHeight - 5f) / 15f);
-            _courtHSlider.onValueChanged.AddListener(v => { if (_bootstrap != null) _bootstrap.courtHeight = 5f + v * 15f; });
-
-            _paddleHSlider = CreateRawSlider(5, sliderStart, barWidth);
-            _paddleHSlider.SetValueWithoutNotify((_bootstrap.paddleHeight - 0.5f) / 4.5f);
-            _paddleHSlider.onValueChanged.AddListener(v => { if (_bootstrap != null) _bootstrap.paddleHeight = 0.5f + v * 4.5f; });
-
-            _ballRadSlider = CreateRawSlider(6, sliderStart, barWidth);
-            _ballRadSlider.SetValueWithoutNotify((_bootstrap.ballRadius - 0.1f) / 0.9f);
-            _ballRadSlider.onValueChanged.AddListener(v => { if (_bootstrap != null) _bootstrap.ballRadius = 0.1f + v * 0.9f; });
-        }
-
-        // ── Raw slider helpers (multiple sliders per row) ───────
-
-        private Slider CreateRawSlider(int rowIndex, int startChar, int widthChars)
-        {
-            if (rowIndex >= rows.Count) return null;
-            var row = rows[rowIndex];
-            float cw = row.CharWidth;
-
-            var sliderGO = new GameObject("ExtraSlider");
-            sliderGO.transform.SetParent(row.transform, false);
-
-            var rect = sliderGO.AddComponent<RectTransform>();
-            rect.anchorMin = new Vector2(0, 0);
-            rect.anchorMax = new Vector2(0, 1);
-            rect.pivot = new Vector2(0, 0.5f);
-            rect.anchoredPosition = new Vector2(startChar * cw, 0);
-            rect.sizeDelta = new Vector2(widthChars * cw, 0);
-
-            var bgImg = sliderGO.AddComponent<Image>();
-            bgImg.color = new Color(0, 0, 0, 0.01f);
-
-            var s = sliderGO.AddComponent<Slider>();
-            s.minValue = 0f;
-            s.maxValue = 1f;
-            s.wholeNumbers = false;
-            s.direction = Slider.Direction.LeftToRight;
-
-            var fillArea = new GameObject("Fill Area");
-            fillArea.transform.SetParent(sliderGO.transform, false);
-            var fillAreaRect = fillArea.AddComponent<RectTransform>();
-            fillAreaRect.anchorMin = new Vector2(0, 0.2f);
-            fillAreaRect.anchorMax = new Vector2(1, 0.8f);
-            fillAreaRect.offsetMin = new Vector2(2, 0);
-            fillAreaRect.offsetMax = new Vector2(-2, 0);
-
-            var fill = new GameObject("Fill");
-            fill.transform.SetParent(fillArea.transform, false);
-            var fillRect = fill.AddComponent<RectTransform>();
-            fillRect.anchorMin = Vector2.zero;
-            fillRect.anchorMax = new Vector2(0, 1);
-            fillRect.sizeDelta = Vector2.zero;
-            var fillImg = fill.AddComponent<Image>();
-            fillImg.color = new Color(0.2f, 0.7f, 0.4f, 0.01f);
-            fillImg.raycastTarget = false;
-            s.fillRect = fillRect;
-
-            var handleArea = new GameObject("Handle Slide Area");
-            handleArea.transform.SetParent(sliderGO.transform, false);
-            var handleAreaRect = handleArea.AddComponent<RectTransform>();
-            handleAreaRect.anchorMin = Vector2.zero;
-            handleAreaRect.anchorMax = Vector2.one;
-            handleAreaRect.offsetMin = new Vector2(5, 0);
-            handleAreaRect.offsetMax = new Vector2(-5, 0);
-
-            var handle = new GameObject("Handle");
-            handle.transform.SetParent(handleArea.transform, false);
-            var handleRect = handle.AddComponent<RectTransform>();
-            handleRect.sizeDelta = new Vector2(10, 0);
-            var handleImg = handle.AddComponent<Image>();
-            handleImg.color = new Color(1, 1, 1, 0.01f);
-
-            s.targetGraphic = handleImg;
-            s.handleRect = handleRect;
-
-            return s;
-        }
-
-        private static void RepositionRawSlider(Slider s, float charWidth, int startChar, int widthChars)
-        {
-            if (s == null) return;
-            var rect = s.GetComponent<RectTransform>();
-            if (rect == null) return;
-            rect.anchoredPosition = new Vector2(startChar * charWidth, 0);
-            rect.sizeDelta = new Vector2(widthChars * charWidth, 0);
-        }
-
-        private static void SetRawSliderVisible(Slider s, bool visible)
-        {
-            if (s != null) s.gameObject.SetActive(visible);
+            // Row 8: [6] Mouse + [D] DEFAULTS
+            _overlays.Button(8, 0, FullBtnLayout, _ => LoadMouseControlled());
+            _overlays.Button(8, 1, FullBtnLayout,
+                _ => { PongBootstrap.ClearOverrides(); SimulationTime.Instance?.SetTimeScale(1f);
+                       SettingsBridge.SetQualityLevel(3); QualityBridge.SetTier(QualityTier.Ultra);
+                       SettingsBridge.SetFontSize(20f); SettingsBridge.SetMasterVolume(0.5f);
+                       SettingsBridge.SetMusicVolume(0.25f); SettingsBridge.SetSfxVolume(0.75f);
+                       SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex); });
         }
 
         // ── Speed conversion (logarithmic 0.1x–100x) ───────────
@@ -663,202 +507,6 @@ namespace Pong.UI
         private static float SliderToFont(float slider)
         {
             return 8f + Mathf.Clamp01(slider) * 40f;
-        }
-
-        // ═══════════════════════════════════════════════════════════════
-        // BUTTON OVERLAYS
-        // ═══════════════════════════════════════════════════════════════
-
-        private void CreateOrRepositionButtons()
-        {
-            if (_colPositions == null || !IsExpanded) return;
-
-            const int pad = 2;
-            const int btnW = 3;
-            int c1 = _colPositions[1];
-            int c4 = _colPositions[4];
-            int c5 = _colPositions[5];
-            int c6 = _colPositions[6];
-            int w0 = Mathf.Max(4, ColWidth(0) - 2);
-            int w1 = Mathf.Max(4, ColWidth(1) - 2);
-            int w4 = Mathf.Max(4, ColWidth(4) - 2);
-            int w6 = Mathf.Max(4, ColWidth(6) - 2);
-
-            // [-] at colStart + 1; [+] at 3 chars from column end (matches AdaptiveSliderRow)
-            int cw1 = ColWidth(1), cw4 = ColWidth(4), cw5 = ColWidth(5);
-
-            int spdMinus   = c4 + 1;
-            int spdPlusOff = Mathf.Max(5, cw4 - 3);
-            int spdPlus    = c4 + spdPlusOff;
-            int spdPlusW   = Mathf.Max(btnW, cw4 - spdPlusOff);
-
-            int qualMinus  = c1 + 1;
-            int qualPlusOff = Mathf.Max(5, cw1 - 3);
-            int qualPlus   = c1 + qualPlusOff;
-            int qualPlusW  = Mathf.Max(btnW, cw1 - qualPlusOff);
-
-            int fontMinus  = c1 + 1;
-            int fontPlus   = qualPlus;
-            int fontPlusW  = qualPlusW;
-
-            int audioMinus = c5 + 1;
-            int audPlusOff = Mathf.Max(5, cw5 - 3);
-            int audioPlus  = c5 + audPlusOff;
-            int audioPlusW = Mathf.Max(btnW, cw5 - audPlusOff);
-
-            int setMinus = c1 + 1;        int setPlus = qualPlus;
-            int setPlusW = qualPlusW;
-
-            // Step lambdas for bootstrap params
-            Action<int> cwDec = _ => { if (_bootstrap != null) _bootstrap.courtWidth = Mathf.Clamp(_bootstrap.courtWidth - 1f, 8f, 32f); };
-            Action<int> cwInc = _ => { if (_bootstrap != null) _bootstrap.courtWidth = Mathf.Clamp(_bootstrap.courtWidth + 1f, 8f, 32f); };
-            Action<int> chDec = _ => { if (_bootstrap != null) _bootstrap.courtHeight = Mathf.Clamp(_bootstrap.courtHeight - 1f, 5f, 20f); };
-            Action<int> chInc = _ => { if (_bootstrap != null) _bootstrap.courtHeight = Mathf.Clamp(_bootstrap.courtHeight + 1f, 5f, 20f); };
-            Action<int> pdDec = _ => { if (_bootstrap != null) _bootstrap.paddleHeight = Mathf.Clamp(_bootstrap.paddleHeight - 0.25f, 0.5f, 5f); };
-            Action<int> pdInc = _ => { if (_bootstrap != null) _bootstrap.paddleHeight = Mathf.Clamp(_bootstrap.paddleHeight + 0.25f, 0.5f, 5f); };
-            Action<int> rdDec = _ => { if (_bootstrap != null) _bootstrap.ballRadius = Mathf.Clamp(_bootstrap.ballRadius - 0.05f, 0.1f, 1f); };
-            Action<int> rdInc = _ => { if (_bootstrap != null) _bootstrap.ballRadius = Mathf.Clamp(_bootstrap.ballRadius + 0.05f, 0.1f, 1f); };
-            Action<int> bsDec = _ => { if (_bootstrap != null) _bootstrap.ballStartSpeed = Mathf.Clamp(_bootstrap.ballStartSpeed - 0.5f, 0.5f, 10f); };
-            Action<int> bsInc = _ => { if (_bootstrap != null) _bootstrap.ballStartSpeed = Mathf.Clamp(_bootstrap.ballStartSpeed + 0.5f, 0.5f, 10f); };
-            Action<int> siDec = _ => { if (_bootstrap != null) _bootstrap.ballSpeedIncrease = Mathf.Clamp(_bootstrap.ballSpeedIncrease - 0.05f, 0f, 2f); };
-            Action<int> siInc = _ => { if (_bootstrap != null) _bootstrap.ballSpeedIncrease = Mathf.Clamp(_bootstrap.ballSpeedIncrease + 0.05f, 0f, 2f); };
-            Action<int> anDec = _ => { if (_bootstrap != null) _bootstrap.maxBounceAngle = Mathf.Clamp(_bootstrap.maxBounceAngle - 5f, 15f, 85f); };
-            Action<int> anInc = _ => { if (_bootstrap != null) _bootstrap.maxBounceAngle = Mathf.Clamp(_bootstrap.maxBounceAngle + 5f, 15f, 85f); };
-
-            if (_buttonsCreated)
-            {
-                // ── Reposition all button overlays ──
-                if (1 < rows.Count)
-                    rows[1].RepositionButtonOverlays(
-                        new[] { spdMinus, spdPlus, qualMinus, qualPlus, audioMinus, audioPlus },
-                        new[] { btnW, spdPlusW, btnW, qualPlusW, btnW, audioPlusW });
-                if (2 < rows.Count)
-                    rows[2].RepositionButtonOverlays(
-                        new[] { c4 + pad, fontMinus, fontPlus, audioMinus, audioPlus },
-                        new[] { w4, btnW, fontPlusW, btnW, audioPlusW });
-                if (3 < rows.Count)
-                    rows[3].RepositionButtonOverlays(
-                        new[] { pad, setMinus, setPlus, audioMinus, audioPlus, c6 + pad },
-                        new[] { w0, btnW, setPlusW, btnW, audioPlusW, w6 });
-                if (4 < rows.Count)
-                    rows[4].RepositionButtonOverlays(
-                        new[] { pad, setMinus, setPlus, c6 + pad },
-                        new[] { w0, btnW, setPlusW, w6 });
-                if (5 < rows.Count)
-                    rows[5].RepositionButtonOverlays(
-                        new[] { pad, setMinus, setPlus, spdMinus, spdPlus, c6 + pad },
-                        new[] { w0, btnW, setPlusW, btnW, spdPlusW, w6 });
-                if (6 < rows.Count)
-                    rows[6].RepositionButtonOverlays(
-                        new[] { pad, setMinus, setPlus, spdMinus, spdPlus, c6 + pad },
-                        new[] { w0, btnW, setPlusW, btnW, spdPlusW, w6 });
-                if (7 < rows.Count)
-                    rows[7].RepositionButtonOverlays(
-                        new[] { pad, spdMinus, spdPlus },
-                        new[] { w0, btnW, spdPlusW });
-                if (8 < rows.Count)
-                    rows[8].RepositionButtonOverlays(
-                        new[] { pad, c1 + pad },
-                        new[] { w0, w1 });
-                return;
-            }
-
-            // ── Row 1: SPD [-][+] + QTY [-][+] + VOL [-][+] ──
-            if (1 < rows.Count)
-                rows[1].CreateButtonOverlays(
-                    new[] { spdMinus, spdPlus, qualMinus, qualPlus, audioMinus, audioPlus },
-                    new[] { btnW, spdPlusW, btnW, qualPlusW, btnW, audioPlusW },
-                    new Action<int>[] {
-                        _ => { var s = SimulationTime.Instance; if (s != null) s.SetTimeScale(SliderToSpeed(Mathf.Clamp01(SpeedToSlider(s.timeScale) - 0.1f))); },
-                        _ => { var s = SimulationTime.Instance; if (s != null) s.SetTimeScale(SliderToSpeed(Mathf.Clamp01(SpeedToSlider(s.timeScale) + 0.1f))); },
-                        _ => { int lv = Mathf.Max(0, SettingsBridge.QualityLevel - 1); SettingsBridge.SetQualityLevel(lv); QualityBridge.SetTier((QualityTier)lv); },
-                        _ => { int lv = Mathf.Min(3, SettingsBridge.QualityLevel + 1); SettingsBridge.SetQualityLevel(lv); QualityBridge.SetTier((QualityTier)lv); },
-                        _ => SettingsBridge.SetMasterVolume(Mathf.Clamp01(SettingsBridge.MasterVolume - 0.1f)),
-                        _ => SettingsBridge.SetMasterVolume(Mathf.Clamp01(SettingsBridge.MasterVolume + 0.1f))
-                    });
-
-            // ── Row 2: [P] PAUSE + FNT [-][+] + MSC [-][+] ──
-            if (2 < rows.Count)
-                rows[2].CreateButtonOverlays(
-                    new[] { c4 + pad, fontMinus, fontPlus, audioMinus, audioPlus },
-                    new[] { w4, btnW, fontPlusW, btnW, audioPlusW },
-                    new Action<int>[] {
-                        _ => SimulationTime.Instance?.TogglePause(),
-                        _ => SettingsBridge.SetFontSize(SettingsBridge.FontSize - 1f),
-                        _ => SettingsBridge.SetFontSize(SettingsBridge.FontSize + 1f),
-                        _ => SettingsBridge.SetMusicVolume(Mathf.Clamp01(SettingsBridge.MusicVolume - 0.1f)),
-                        _ => SettingsBridge.SetMusicVolume(Mathf.Clamp01(SettingsBridge.MusicVolume + 0.1f))
-                    });
-
-            // ── Row 3: [1] Easy + C.W [-][+] + SFX [-][+] + [S+1] Easy ──
-            if (3 < rows.Count)
-                rows[3].CreateButtonOverlays(
-                    new[] { pad, setMinus, setPlus, audioMinus, audioPlus, c6 + pad },
-                    new[] { w0, btnW, setPlusW, btnW, audioPlusW, w6 },
-                    new Action<int>[] {
-                        _ => LoadPlayerSample(AIDifficulty.Easy),
-                        cwDec, cwInc,
-                        _ => SettingsBridge.SetSfxVolume(Mathf.Clamp01(SettingsBridge.SfxVolume - 0.1f)),
-                        _ => SettingsBridge.SetSfxVolume(Mathf.Clamp01(SettingsBridge.SfxVolume + 0.1f)),
-                        _ => SetAIDifficulty(AIDifficulty.Easy)
-                    });
-
-            // ── Row 4: [2] Medium + C.H [-][+] + [S+2] Medium ──
-            if (4 < rows.Count)
-                rows[4].CreateButtonOverlays(
-                    new[] { pad, setMinus, setPlus, c6 + pad },
-                    new[] { w0, btnW, setPlusW, w6 },
-                    new Action<int>[] {
-                        _ => LoadPlayerSample(AIDifficulty.Medium),
-                        chDec, chInc,
-                        _ => SetAIDifficulty(AIDifficulty.Medium)
-                    });
-
-            // ── Row 5: [3] Hard + PDL [-][+] + BSP [-][+] + [S+3] Hard ──
-            if (5 < rows.Count)
-                rows[5].CreateButtonOverlays(
-                    new[] { pad, setMinus, setPlus, spdMinus, spdPlus, c6 + pad },
-                    new[] { w0, btnW, setPlusW, btnW, spdPlusW, w6 },
-                    new Action<int>[] {
-                        _ => LoadPlayerSample(AIDifficulty.Hard),
-                        pdDec, pdInc,
-                        bsDec, bsInc,
-                        _ => SetAIDifficulty(AIDifficulty.Hard)
-                    });
-
-            // ── Row 6: [4] Expert + RAD [-][+] + INC [-][+] + [S+4] Expert ──
-            if (6 < rows.Count)
-                rows[6].CreateButtonOverlays(
-                    new[] { pad, setMinus, setPlus, spdMinus, spdPlus, c6 + pad },
-                    new[] { w0, btnW, setPlusW, btnW, spdPlusW, w6 },
-                    new Action<int>[] {
-                        _ => LoadPlayerSample(AIDifficulty.Expert),
-                        rdDec, rdInc,
-                        siDec, siInc,
-                        _ => SetAIDifficulty(AIDifficulty.Expert)
-                    });
-
-            // ── Row 7: [5] Keyboard + ANG [-][+] ──
-            if (7 < rows.Count)
-                rows[7].CreateButtonOverlays(
-                    new[] { pad, spdMinus, spdPlus },
-                    new[] { w0, btnW, spdPlusW },
-                    new Action<int>[] {
-                        _ => LoadUserControlled(),
-                        anDec, anInc
-                    });
-
-            // ── Row 8: [6] Mouse + [D] DEFAULTS ──
-            if (8 < rows.Count)
-                rows[8].CreateButtonOverlays(
-                    new[] { pad, c1 + pad },
-                    new[] { w0, w1 },
-                    new Action<int>[] {
-                        _ => LoadMouseControlled(),
-                        _ => { PongBootstrap.ClearOverrides(); SimulationTime.Instance?.SetTimeScale(1f); SettingsBridge.SetQualityLevel(3); QualityBridge.SetTier(QualityTier.Ultra); SettingsBridge.SetFontSize(20f); SettingsBridge.SetMasterVolume(0.5f); SettingsBridge.SetMusicVolume(0.25f); SettingsBridge.SetSfxVolume(0.75f); SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex); }
-                    });
-
-            _buttonsCreated = true;
         }
 
         private void CycleQuality()
@@ -899,31 +547,8 @@ namespace Pong.UI
 
             if (!IsExpanded) return;
 
-            // Sync audio sliders
-            if (_masterSlider != null) _masterSlider.SetValueWithoutNotify(SettingsBridge.MasterVolume);
-            if (_musicSlider != null) _musicSlider.SetValueWithoutNotify(SettingsBridge.MusicVolume);
-            if (_sfxSlider != null) _sfxSlider.SetValueWithoutNotify(SettingsBridge.SfxVolume);
-
-            // Sync controls / quality sliders
-            if (_speedSlider != null)
-            {
-                var sim = SimulationTime.Instance;
-                if (sim != null) _speedSlider.SetValueWithoutNotify(SpeedToSlider(sim.timeScale));
-            }
-            if (_qualitySlider != null) _qualitySlider.SetValueWithoutNotify(SettingsBridge.QualityLevel / 3f);
-            // Don't sync font slider here — it applies immediately and syncing would fight with drag
-
-            // Sync bootstrap parameter sliders
-            if (_bootstrap != null)
-            {
-                if (_courtWSlider != null) _courtWSlider.SetValueWithoutNotify((_bootstrap.courtWidth - 8f) / 24f);
-                if (_courtHSlider != null) _courtHSlider.SetValueWithoutNotify((_bootstrap.courtHeight - 5f) / 15f);
-                if (_paddleHSlider != null) _paddleHSlider.SetValueWithoutNotify((_bootstrap.paddleHeight - 0.5f) / 4.5f);
-                if (_ballRadSlider != null) _ballRadSlider.SetValueWithoutNotify((_bootstrap.ballRadius - 0.1f) / 0.9f);
-                if (_ballSpdSlider != null) _ballSpdSlider.SetValueWithoutNotify((_bootstrap.ballStartSpeed - 0.5f) / 9.5f);
-                if (_spdIncSlider != null) _spdIncSlider.SetValueWithoutNotify(_bootstrap.ballSpeedIncrease / 2f);
-                if (_bounceSlider != null) _bounceSlider.SetValueWithoutNotify((_bootstrap.maxBounceAngle - 15f) / 70f);
-            }
+            // Sync all overlay sliders to current values
+            _overlays?.Sync();
 
             // Build all 7 columns
             var cols = new string[COL_COUNT][];
@@ -1159,37 +784,6 @@ namespace Pong.UI
             return lines.ToArray();
         }
 
-        // ── Adaptive slider row builder ───────────────────────
-
-        /// <summary>
-        /// Builds a slider row that adapts to available column width.
-        /// Tiers:  w&lt;6: "- +"  |  w&lt;10: "[-] [+]"  |  w&lt;16: "[-] LBL [+]"
-        ///         w&lt;22: "[-] LBL VAL [+]"  |  w>=22: "[-] LBL BAR VAL [+]"
-        /// </summary>
-        private static string AdaptiveSliderRow(int colWidth, string label, float norm, string valueStr, bool showPct = false)
-        {
-            // Reserve 1 char for column divider
-            int w = colWidth - 1;
-            string minus = TUIColors.Fg(TUIColors.BrightCyan, "[-]");
-            string plus = TUIColors.Fg(TUIColors.BrightCyan, "[+]");
-
-            if (w < 6)
-                return $" {TUIColors.Fg(TUIColors.BrightCyan, "-")} {TUIColors.Fg(TUIColors.BrightCyan, "+")}";
-            if (w < 10)
-                return $" {minus} {plus}";
-            if (w < 16)
-                return $" {minus} {label} {plus}";
-
-            // overhead: " [-] LBL VVVV [+]" = 1+3+1+lbl+1+val+1+3 = 10+lbl+val
-            int overhead = 10 + label.Length + valueStr.Length;
-            if (w < overhead + 4)
-                return $" {minus} {label} {valueStr} {plus}";
-
-            // Full: label + bar + value
-            int barLen = w - overhead;
-            return $" {minus} {label}{TUIWidgets.ProgressBar(Mathf.Clamp01(norm), barLen, showPct)}{valueStr} {plus}";
-        }
-
         // ── Column 4: CONTROLS ──────────────────────────────────
 
         private string[] BuildControlsColumn()
@@ -1204,7 +798,7 @@ namespace Pong.UI
             string paused = (sim != null && sim.isPaused)
                 ? TUIColors.Fg(TUIColors.BrightYellow, " PAUSED") : "";
 
-            lines.Add(AdaptiveSliderRow(w, "SPD", speedNorm, speedStr) + paused);
+            lines.Add(TUIWidgets.AdaptiveSliderRow(w, "SPD", speedNorm, speedStr) + paused);
             string pauseLabel = (sim != null && sim.isPaused) ? "PLAY" : "PAUSE";
             lines.Add($" {TUIColors.Fg(TUIColors.BrightCyan, "[P]")} {pauseLabel}");
             lines.Add("");
@@ -1217,9 +811,9 @@ namespace Pong.UI
             if (_bootstrap == null) _bootstrap = FindFirstObjectByType<PongBootstrap>();
             if (_bootstrap != null)
             {
-                lines.Add(AdaptiveSliderRow(w, "BSP", (_bootstrap.ballStartSpeed - 0.5f) / 9.5f, $"{_bootstrap.ballStartSpeed,4:F1}"));
-                lines.Add(AdaptiveSliderRow(w, "INC", _bootstrap.ballSpeedIncrease / 2f, $"{_bootstrap.ballSpeedIncrease,4:F2}"));
-                lines.Add(AdaptiveSliderRow(w, "ANG", (_bootstrap.maxBounceAngle - 15f) / 70f, $"{_bootstrap.maxBounceAngle,4:F0}"));
+                lines.Add(TUIWidgets.AdaptiveSliderRow(w, "BSP", (_bootstrap.ballStartSpeed - 0.5f) / 9.5f, $"{_bootstrap.ballStartSpeed,4:F1}"));
+                lines.Add(TUIWidgets.AdaptiveSliderRow(w, "INC", _bootstrap.ballSpeedIncrease / 2f, $"{_bootstrap.ballSpeedIncrease,4:F2}"));
+                lines.Add(TUIWidgets.AdaptiveSliderRow(w, "ANG", (_bootstrap.maxBounceAngle - 15f) / 70f, $"{_bootstrap.maxBounceAngle,4:F0}"));
             }
             return lines.ToArray();
         }
@@ -1236,22 +830,22 @@ namespace Pong.UI
             if (qualName.Length > 4) qualName = qualName.Substring(0, 4);
             else qualName = qualName.PadRight(4);
 
-            lines.Add(AdaptiveSliderRow(w, "QTY", qualNorm, qualName));
+            lines.Add(TUIWidgets.AdaptiveSliderRow(w, "QTY", qualNorm, qualName));
 
             float fontNorm = FontToSlider(SettingsBridge.FontSize);
             string fontStr = $"{SettingsBridge.FontSize,2:F0}pt";
 
-            lines.Add(AdaptiveSliderRow(w, "FNT", fontNorm, fontStr));
+            lines.Add(TUIWidgets.AdaptiveSliderRow(w, "FNT", fontNorm, fontStr));
 
             // Bootstrap game parameters
             if (_bootstrap == null)
                 _bootstrap = FindFirstObjectByType<PongBootstrap>();
             if (_bootstrap != null)
             {
-                lines.Add(AdaptiveSliderRow(w, "C.W", (_bootstrap.courtWidth - 8f) / 24f, $"{_bootstrap.courtWidth,4:F0}"));
-                lines.Add(AdaptiveSliderRow(w, "C.H", (_bootstrap.courtHeight - 5f) / 15f, $"{_bootstrap.courtHeight,4:F0}"));
-                lines.Add(AdaptiveSliderRow(w, "PDL", (_bootstrap.paddleHeight - 0.5f) / 4.5f, $"{_bootstrap.paddleHeight,4:F1}"));
-                lines.Add(AdaptiveSliderRow(w, "RAD", (_bootstrap.ballRadius - 0.1f) / 0.9f, $"{_bootstrap.ballRadius,4:F2}"));
+                lines.Add(TUIWidgets.AdaptiveSliderRow(w, "C.W", (_bootstrap.courtWidth - 8f) / 24f, $"{_bootstrap.courtWidth,4:F0}"));
+                lines.Add(TUIWidgets.AdaptiveSliderRow(w, "C.H", (_bootstrap.courtHeight - 5f) / 15f, $"{_bootstrap.courtHeight,4:F0}"));
+                lines.Add(TUIWidgets.AdaptiveSliderRow(w, "PDL", (_bootstrap.paddleHeight - 0.5f) / 4.5f, $"{_bootstrap.paddleHeight,4:F1}"));
+                lines.Add(TUIWidgets.AdaptiveSliderRow(w, "RAD", (_bootstrap.ballRadius - 0.1f) / 0.9f, $"{_bootstrap.ballRadius,4:F2}"));
             }
 
             lines.Add("");
@@ -1260,10 +854,7 @@ namespace Pong.UI
             return lines.ToArray();
         }
 
-        private string BuildParamRow(int colWidth, string label, float norm, string valueStr)
-        {
-            return AdaptiveSliderRow(colWidth, label, norm, valueStr);
-        }
+
 
         // ── Column 6: AUDIO ──────────────────────────────────────
 
@@ -1272,9 +863,9 @@ namespace Pong.UI
             var lines = new List<string>();
             int w = ColWidth(5);
 
-            lines.Add(AdaptiveSliderRow(w, "VOL", SettingsBridge.MasterVolume, $"{SettingsBridge.MasterVolume * 100:F0}%"));
-            lines.Add(AdaptiveSliderRow(w, "MSC", SettingsBridge.MusicVolume, $"{SettingsBridge.MusicVolume * 100:F0}%"));
-            lines.Add(AdaptiveSliderRow(w, "SFX", SettingsBridge.SfxVolume, $"{SettingsBridge.SfxVolume * 100:F0}%"));
+            lines.Add(TUIWidgets.AdaptiveSliderRow(w, "VOL", SettingsBridge.MasterVolume, $"{SettingsBridge.MasterVolume * 100:F0}%"));
+            lines.Add(TUIWidgets.AdaptiveSliderRow(w, "MSC", SettingsBridge.MusicVolume, $"{SettingsBridge.MusicVolume * 100:F0}%"));
+            lines.Add(TUIWidgets.AdaptiveSliderRow(w, "SFX", SettingsBridge.SfxVolume, $"{SettingsBridge.SfxVolume * 100:F0}%"));
 
             // EQ visualization — fill remaining space below sliders
             if (_equalizer != null)
