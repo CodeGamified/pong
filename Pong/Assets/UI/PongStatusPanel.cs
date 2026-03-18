@@ -393,51 +393,50 @@ namespace Pong.UI
                 // ── Controls sliders (col 4) ──
                 _overlays.Slider(1, 4,
                     () => SpeedToSlider(SimulationTime.Instance != null ? SimulationTime.Instance.timeScale : 1f),
-                    v => SimulationTime.Instance?.SetTimeScale(SliderToSpeed(v)),
-                    minWidth: 10);
+                    v => SimulationTime.Instance?.SetTimeScale(SliderToSpeed(v)));
                 if (_bootstrap != null)
                 {
                     _overlays.Slider(2, 4,
                         () => (_bootstrap.ballStartSpeed - 0.5f) / 9.5f,
                         v => { if (_bootstrap != null) _bootstrap.ballStartSpeed = 0.5f + v * 9.5f; },
-                        minWidth: 10, step: 0.5f / 9.5f);
+                        step: 0.5f / 9.5f);
                     _overlays.Slider(3, 4,
                         () => _bootstrap.ballSpeedIncrease / 2f,
                         v => { if (_bootstrap != null) _bootstrap.ballSpeedIncrease = v * 2f; },
-                        minWidth: 10, step: 0.025f);
+                        step: 0.025f);
                     _overlays.Slider(4, 4,
                         () => (_bootstrap.maxBounceAngle - 15f) / 70f,
                         v => { if (_bootstrap != null) _bootstrap.maxBounceAngle = 15f + v * 70f; },
-                        minWidth: 10, step: 5f / 70f);
+                        step: 5f / 70f);
                 }
 
                 // ── Quality / Font sliders (col 1) ──
                 _overlays.Slider(1, 1,
                     () => SettingsBridge.QualityLevel / 3f,
                     v => { int lv = Mathf.RoundToInt(v * 3f); SettingsBridge.SetQualityLevel(lv); QualityBridge.SetTier((QualityTier)lv); },
-                    minWidth: 10, step: 1f / 3f);
+                    step: 1f / 3f);
                 _overlays.Slider(2, 1,
                     () => FontToSlider(SettingsBridge.FontSize),
                     v => SettingsBridge.SetFontSize(SliderToFont(v)),
-                    minWidth: 10, step: 1f / 40f);
+                    step: 1f / 40f);
                 if (_bootstrap != null)
                 {
                     _overlays.Slider(3, 1,
                         () => (_bootstrap.courtWidth - 8f) / 24f,
                         v => { if (_bootstrap != null) _bootstrap.courtWidth = 8f + v * 24f; },
-                        minWidth: 10, step: 1f / 24f);
+                        step: 1f / 24f);
                     _overlays.Slider(4, 1,
                         () => (_bootstrap.courtHeight - 5f) / 15f,
                         v => { if (_bootstrap != null) _bootstrap.courtHeight = 5f + v * 15f; },
-                        minWidth: 10, step: 1f / 15f);
+                        step: 1f / 15f);
                     _overlays.Slider(5, 1,
                         () => (_bootstrap.paddleHeight - 0.5f) / 4.5f,
                         v => { if (_bootstrap != null) _bootstrap.paddleHeight = 0.5f + v * 4.5f; },
-                        minWidth: 10, step: 0.25f / 4.5f);
+                        step: 0.25f / 4.5f);
                     _overlays.Slider(6, 1,
                         () => (_bootstrap.ballRadius - 0.1f) / 0.9f,
                         v => { if (_bootstrap != null) _bootstrap.ballRadius = 0.1f + v * 0.9f; },
-                        minWidth: 10, step: 0.05f / 0.9f);
+                        step: 0.05f / 0.9f);
                 }
 
                 // ── Buttons ──
