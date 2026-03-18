@@ -29,7 +29,7 @@ namespace Pong.Audio
             if (_musicSource == null || !_musicSource.isPlaying)
                 return false;
 
-            AudioListener.GetSpectrumData(_spectrum, 0, FFTWindow.BlackmanHarris);
+            _musicSource.GetSpectrumData(_spectrum, 0, FFTWindow.BlackmanHarris);
 
             for (int b = 0; b < bands.Length && b < EqBandCount; b++)
             {
