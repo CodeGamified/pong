@@ -191,7 +191,6 @@ namespace Pong.Core
         private AssemblyResult _leftGoalVisual;
         private AssemblyResult _rightGoalVisual;
 
-
         // Ball trail
         private PongBallTrail _ballTrail;
 

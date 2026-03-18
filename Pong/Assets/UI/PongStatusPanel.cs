@@ -393,51 +393,50 @@ namespace Pong.UI
                 // ── Controls sliders (col 4) ──
                 _overlays.Slider(1, 4,
                     () => SpeedToSlider(SimulationTime.Instance != null ? SimulationTime.Instance.timeScale : 1f),
-                    v => SimulationTime.Instance?.SetTimeScale(SliderToSpeed(v)),
-                    minWidth: 10);
+                    v => SimulationTime.Instance?.SetTimeScale(SliderToSpeed(v)));
                 if (_bootstrap != null)
                 {
-                    _overlays.Slider(2, 4,
+                    _overlays.Slider(5, 4,
                         () => (_bootstrap.ballStartSpeed - 0.5f) / 9.5f,
                         v => { if (_bootstrap != null) _bootstrap.ballStartSpeed = 0.5f + v * 9.5f; },
-                        minWidth: 10, step: 0.5f / 9.5f);
-                    _overlays.Slider(3, 4,
+                        step: 0.5f / 9.5f);
+                    _overlays.Slider(6, 4,
                         () => _bootstrap.ballSpeedIncrease / 2f,
                         v => { if (_bootstrap != null) _bootstrap.ballSpeedIncrease = v * 2f; },
-                        minWidth: 10, step: 0.025f);
-                    _overlays.Slider(4, 4,
+                        step: 0.025f);
+                    _overlays.Slider(7, 4,
                         () => (_bootstrap.maxBounceAngle - 15f) / 70f,
                         v => { if (_bootstrap != null) _bootstrap.maxBounceAngle = 15f + v * 70f; },
-                        minWidth: 10, step: 5f / 70f);
+                        step: 5f / 70f);
                 }
 
                 // ── Quality / Font sliders (col 1) ──
                 _overlays.Slider(1, 1,
                     () => SettingsBridge.QualityLevel / 3f,
                     v => { int lv = Mathf.RoundToInt(v * 3f); SettingsBridge.SetQualityLevel(lv); QualityBridge.SetTier((QualityTier)lv); },
-                    minWidth: 10, step: 1f / 3f);
+                    step: 1f / 3f);
                 _overlays.Slider(2, 1,
                     () => FontToSlider(SettingsBridge.FontSize),
                     v => SettingsBridge.SetFontSize(SliderToFont(v)),
-                    minWidth: 10, step: 1f / 40f);
+                    step: 1f / 40f);
                 if (_bootstrap != null)
                 {
-                    _overlays.Slider(3, 1,
+                    _overlays.Slider(5, 1,
                         () => (_bootstrap.courtWidth - 8f) / 24f,
                         v => { if (_bootstrap != null) _bootstrap.courtWidth = 8f + v * 24f; },
-                        minWidth: 10, step: 1f / 24f);
-                    _overlays.Slider(4, 1,
+                        step: 1f / 24f);
+                    _overlays.Slider(6, 1,
                         () => (_bootstrap.courtHeight - 5f) / 15f,
                         v => { if (_bootstrap != null) _bootstrap.courtHeight = 5f + v * 15f; },
-                        minWidth: 10, step: 1f / 15f);
-                    _overlays.Slider(5, 1,
+                        step: 1f / 15f);
+                    _overlays.Slider(7, 1,
                         () => (_bootstrap.paddleHeight - 0.5f) / 4.5f,
                         v => { if (_bootstrap != null) _bootstrap.paddleHeight = 0.5f + v * 4.5f; },
-                        minWidth: 10, step: 0.25f / 4.5f);
-                    _overlays.Slider(6, 1,
+                        step: 0.25f / 4.5f);
+                    _overlays.Slider(8, 1,
                         () => (_bootstrap.ballRadius - 0.1f) / 0.9f,
                         v => { if (_bootstrap != null) _bootstrap.ballRadius = 0.1f + v * 0.9f; },
-                        minWidth: 10, step: 0.05f / 0.9f);
+                        step: 0.05f / 0.9f);
                 }
 
                 // ── Buttons ──
@@ -455,28 +454,25 @@ namespace Pong.UI
             // Row 2: [P] PAUSE
             _overlays.Button(2, 4, FullBtnLayout, _ => SimulationTime.Instance?.TogglePause());
 
-            // Row 3: [1] Easy + [S+1] Easy
-            _overlays.Button(3, 0, FullBtnLayout, _ => LoadPlayerSample(AIDifficulty.Easy));
-            _overlays.Button(3, 6, FullBtnLayout, _ => SetAIDifficulty(AIDifficulty.Easy));
+            // Row 4: [1] Easy + [S+1] Easy
+            _overlays.Button(4, 0, FullBtnLayout, _ => LoadPlayerSample(AIDifficulty.Easy));
+            _overlays.Button(4, 6, FullBtnLayout, _ => SetAIDifficulty(AIDifficulty.Easy));
 
-            // Row 4: [2] Medium + [S+2] Medium
-            _overlays.Button(4, 0, FullBtnLayout, _ => LoadPlayerSample(AIDifficulty.Medium));
-            _overlays.Button(4, 6, FullBtnLayout, _ => SetAIDifficulty(AIDifficulty.Medium));
+            // Row 5: [2] Medium + [S+2] Medium
+            _overlays.Button(5, 0, FullBtnLayout, _ => LoadPlayerSample(AIDifficulty.Medium));
+            _overlays.Button(5, 6, FullBtnLayout, _ => SetAIDifficulty(AIDifficulty.Medium));
 
-            // Row 5: [3] Hard + [S+3] Hard
-            _overlays.Button(5, 0, FullBtnLayout, _ => LoadPlayerSample(AIDifficulty.Hard));
-            _overlays.Button(5, 6, FullBtnLayout, _ => SetAIDifficulty(AIDifficulty.Hard));
+            // Row 6: [3] Hard + [S+3] Hard
+            _overlays.Button(6, 0, FullBtnLayout, _ => LoadPlayerSample(AIDifficulty.Hard));
+            _overlays.Button(6, 6, FullBtnLayout, _ => SetAIDifficulty(AIDifficulty.Hard));
 
-            // Row 6: [4] Expert + [S+4] Expert
-            _overlays.Button(6, 0, FullBtnLayout, _ => LoadPlayerSample(AIDifficulty.Expert));
-            _overlays.Button(6, 6, FullBtnLayout, _ => SetAIDifficulty(AIDifficulty.Expert));
-
-            // Row 7: [5] Keyboard
+            // Row 7: [S+4] Expert (opponent only) + [5] Keyboard
+            _overlays.Button(7, 6, FullBtnLayout, _ => SetAIDifficulty(AIDifficulty.Expert));
             _overlays.Button(7, 0, FullBtnLayout, _ => LoadUserControlled());
 
-            // Row 8: [6] Mouse + [D] DEFAULTS
+            // Row 8: [6] Mouse
             _overlays.Button(8, 0, FullBtnLayout, _ => LoadMouseControlled());
-            _overlays.Button(8, 1, FullBtnLayout,
+            _overlays.Button(8, 4, FullBtnLayout,
                 _ => { PongBootstrap.ClearOverrides(); SimulationTime.Instance?.SetTimeScale(1f);
                        SettingsBridge.SetQualityLevel(3); QualityBridge.SetTier(QualityTier.Ultra);
                        SettingsBridge.SetFontSize(20f); SettingsBridge.SetMasterVolume(0.5f);
@@ -613,8 +609,7 @@ namespace Pong.UI
             var sim = SimulationTime.Instance;
             if (sim != null)
             {
-                string paused = sim.isPaused ? TUIColors.Fg(TUIColors.BrightYellow, " PAUSED") : "";
-                dynamic[4] = $" {sim.GetFormattedTimeScale()}{paused}";
+                dynamic[4] = $" {sim.GetFormattedTimeScale()}";
             }
             else
                 dynamic[4] = labels[4];
@@ -658,8 +653,10 @@ namespace Pong.UI
                 lines.Add(TUIColors.Dimmed("  No program"));
             }
 
-            var diffs = new[] { AIDifficulty.Easy, AIDifficulty.Medium, AIDifficulty.Hard, AIDifficulty.Expert };
-            lines.Add($"  {TUIColors.Dimmed("LOAD:")}");
+            var diffs = new[] { AIDifficulty.Easy, AIDifficulty.Medium, AIDifficulty.Hard };
+            lines.Add("");
+            { int cw = ColWidth(0); string loadLabel = "LOAD"; int loadPad = Mathf.Max(0, (cw - loadLabel.Length) / 2);
+              lines.Add(new string(' ', loadPad) + TUIColors.Dimmed(loadLabel)); }
             for (int i = 0; i < diffs.Length; i++)
             {
                 bool active = _playerScriptTier.HasValue && _playerScriptTier.Value == diffs[i];
@@ -709,7 +706,9 @@ namespace Pong.UI
             }
 
             var diffs = new[] { AIDifficulty.Easy, AIDifficulty.Medium, AIDifficulty.Hard, AIDifficulty.Expert };
-            lines.Add($"  {TUIColors.Dimmed("LOAD:")}");
+            lines.Add("");
+            { int cw = ColWidth(6); string loadLabel = "LOAD"; int loadPad = Mathf.Max(0, (cw - loadLabel.Length) / 2);
+              lines.Add(new string(' ', loadPad) + TUIColors.Dimmed(loadLabel)); }
             for (int i = 0; i < diffs.Length; i++)
             {
                 bool active = _ai != null && _ai.Difficulty == diffs[i];
@@ -815,6 +814,7 @@ namespace Pong.UI
                 lines.Add(TUIWidgets.AdaptiveSliderRow(w, "INC", _bootstrap.ballSpeedIncrease / 2f, $"{_bootstrap.ballSpeedIncrease,4:F2}"));
                 lines.Add(TUIWidgets.AdaptiveSliderRow(w, "ANG", (_bootstrap.maxBounceAngle - 15f) / 70f, $"{_bootstrap.maxBounceAngle,4:F0}"));
             }
+            lines.Add($" {TUIColors.Fg(TUIColors.BrightCyan, "[D]")} DEFAULTS");
             return lines.ToArray();
         }
 
@@ -837,6 +837,11 @@ namespace Pong.UI
 
             lines.Add(TUIWidgets.AdaptiveSliderRow(w, "FNT", fontNorm, fontStr));
 
+            lines.Add("");
+            string sizesLabel = "SIZES";
+            int sizesPad = Mathf.Max(0, (w - sizesLabel.Length) / 2);
+            lines.Add(new string(' ', sizesPad) + TUIColors.Dimmed(sizesLabel));
+
             // Bootstrap game parameters
             if (_bootstrap == null)
                 _bootstrap = FindFirstObjectByType<PongBootstrap>();
@@ -847,9 +852,6 @@ namespace Pong.UI
                 lines.Add(TUIWidgets.AdaptiveSliderRow(w, "PDL", (_bootstrap.paddleHeight - 0.5f) / 4.5f, $"{_bootstrap.paddleHeight,4:F1}"));
                 lines.Add(TUIWidgets.AdaptiveSliderRow(w, "RAD", (_bootstrap.ballRadius - 0.1f) / 0.9f, $"{_bootstrap.ballRadius,4:F2}"));
             }
-
-            lines.Add("");
-            lines.Add($" {TUIColors.Fg(TUIColors.BrightCyan, "[D]")} DEFAULTS");
 
             return lines.ToArray();
         }
