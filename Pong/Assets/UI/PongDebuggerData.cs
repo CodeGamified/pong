@@ -99,6 +99,11 @@ namespace Pong.UI
                 if (tokenLine < 0) tokenLine = activeLine; // fallback: first line
             }
 
+            // Auto-scroll to keep active source line visible
+            int focusLine = tokenLine >= 0 ? tokenLine : activeLine;
+            if (focusLine >= 0 && src.Length > maxRows)
+                scrollOffset = Mathf.Clamp(focusLine - maxRows / 3, 0, src.Length - maxRows);
+
             for (int i = scrollOffset; i < src.Length && lines.Count < maxRows; i++)
             {
                 if (i == tokenLine)
